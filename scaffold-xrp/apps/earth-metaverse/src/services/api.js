@@ -1,8 +1,12 @@
 const API_URL = 'http://localhost:3001/api';
 
-export const fetchTiles = async (bbox) => {
+export const fetchTiles = async (bbox, filterDate) => {
     try {
-        const queryParams = new URLSearchParams(bbox).toString();
+        const params = new URLSearchParams(bbox);
+        if (filterDate) {
+            params.append('filterDate', filterDate);
+        }
+        const queryParams = params.toString();
         const response = await fetch(`${API_URL}/tiles?${queryParams}`);
         if (!response.ok) {
             throw new Error('Failed to fetch tiles');
@@ -14,14 +18,14 @@ export const fetchTiles = async (bbox) => {
     }
 };
 
-export const lockTile = async (h3Index, userWallet) => {
+export const lockTile = async (h3Index, userWallet, gameDate) => {
     try {
         const response = await fetch(`${API_URL}/tile/lock`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ h3Index, userWallet }),
+            body: JSON.stringify({ h3Index, userWallet, gameDate }),
         });
 
         const data = await response.json();

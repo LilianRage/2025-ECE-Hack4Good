@@ -8,10 +8,10 @@ const MERCHANT_WALLET = process.env.MERCHANT_WALLET || 'r34oNndfhcrg5699bV5jMKyT
 const TILE_PRICE_DROPS = '10000000'; // 10 XRP
 
 export const lockTile = async (req: Request, res: Response) => {
-    const { h3Index, userWallet } = req.body;
+    const { h3Index, userWallet, gameDate } = req.body;
 
-    if (!h3Index || !userWallet) {
-        return res.status(400).json({ error: 'Missing h3Index or userWallet' });
+    if (!h3Index || !userWallet || !gameDate) {
+        return res.status(400).json({ error: 'Missing h3Index, userWallet, or gameDate' });
     }
 
     // 1. Calculate geo for MongoDB
@@ -19,6 +19,20 @@ export const lockTile = async (req: Request, res: Response) => {
 
     try {
         // Check if tile exists and is not expired
+        // Note: With gameDate, uniqueness might need to be scoped by date if we allow multiple owners for different times.
+        // For now, assuming 1 tile = 1 owner regardless of time, OR we should check if tile exists at this specific time.
+        // User request: "afficher les tuiles acheté à une heure précise". 
+        // This implies we can have the same tile purchased at different times? 
+        // Or just that we filter the VIEW. 
+        // Let's assume for now that a tile is unique per (h3Index, gameDate).
+        // BUT the current schema has _id = h3Index, which enforces uniqueness globally.
+        // If we want multiple dates, we need to change _id or use a composite index.
+        // Given the constraint of the current task and previous setup, I will assume for now that 
+        // we are just adding metadata to the unique tile. 
+        // WAIT, if I want to buy a tile "at a specific hour", it usually means I'm buying a slot.
+        // If I just tag a date to a permanent purchase, that's easier.
+        // Let's stick to: One tile, one owner, but it has a "Game Date" property.
+
         const existingTile = await Tile.findById(h3Index);
         if (existingTile) {
             // If it's already OWNED or PAID, reject
@@ -35,7 +49,8 @@ export const lockTile = async (req: Request, res: Response) => {
             _id: h3Index,
             location: { coordinates: [lon, lat] }, // Note the inversion!
             status: 'LOCKED',
-            owner: { address: userWallet }
+            owner: { address: userWallet },
+            gameDate: new Date(gameDate)
         });
         return res.status(201).json({ success: true, tile });
     } catch (error: any) {
@@ -96,25 +111,43 @@ export const confirmTile = async (req: Request, res: Response) => {
 };
 
 export const getTilesInView = async (req: Request, res: Response) => {
-    const { minLon, minLat, maxLon, maxLat } = req.query;
+    const { minLon, minLat, maxLon, maxLat, filterDate } = req.query;
 
     if (!minLon || !minLat || !maxLon || !maxLat) {
         return res.status(400).json({ error: 'Missing bbox parameters' });
     }
 
+    const query: any = {
+        location: {
+            $geoWithin: {
+                $box: [
+                    [parseFloat(minLon as string), parseFloat(minLat as string)], // Bottom-left
+                    [parseFloat(maxLon as string), parseFloat(maxLat as string)]  // Top-right
+                ]
+            }
+        },
+        status: { $in: ['LOCKED', 'OWNED', 'PAID'] }
+    };
+
+    // Filter by Date (Hour precision)
+    if (filterDate) {
+        const date = new Date(filterDate as string);
+        // Start of hour
+        const start = new Date(date);
+        start.setMinutes(0, 0, 0);
+        // End of hour
+        const end = new Date(start);
+        end.setHours(end.getHours() + 1);
+
+        query.gameDate = {
+            $gte: start,
+            $lt: end
+        };
+    }
+
     try {
-        const tiles = await Tile.find({
-            location: {
-                $geoWithin: {
-                    $box: [
-                        [parseFloat(minLon as string), parseFloat(minLat as string)], // Bottom-left
-                        [parseFloat(maxLon as string), parseFloat(maxLat as string)]  // Top-right
-                    ]
-                }
-            },
-            status: { $in: ['LOCKED', 'OWNED', 'PAID'] }
-        })
-            .select('_id status owner.address metadata.ipfsImage')
+        const tiles = await Tile.find(query)
+            .select('_id status owner.address metadata.ipfsImage gameDate')
             .lean();
 
         return res.status(200).json(tiles);

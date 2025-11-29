@@ -12,6 +12,12 @@ const GlobeViewer = () => {
     const [lockedTiles, setLockedTiles] = useState(new Map()); // Map<h3Index, tileData>
     const [isLocking, setIsLocking] = useState(false);
 
+    // Date States
+    // Default to current hour for filter
+    const [filterDate, setFilterDate] = useState(new Date().toISOString().slice(0, 13) + ':00');
+    // Default to current time for purchase
+    const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().slice(0, 16));
+
     // Fetch tiles function
     const loadTiles = useCallback(async () => {
         // For now, we fetch a large area or all. 
@@ -23,13 +29,13 @@ const GlobeViewer = () => {
             maxLon: 180,
             maxLat: 90
         };
-        const tiles = await fetchTiles(bbox);
+        const tiles = await fetchTiles(bbox, filterDate);
         const newLockedTiles = new Map();
         tiles.forEach(tile => {
             newLockedTiles.set(tile._id, tile);
         });
         setLockedTiles(newLockedTiles);
-    }, []);
+    }, [filterDate]);
 
     useEffect(() => {
         loadTiles();
@@ -211,7 +217,7 @@ const GlobeViewer = () => {
         try {
             // 1. Lock the tile
             console.log('Locking tile...');
-            await lockTile(selectedH3Index, walletAddress);
+            await lockTile(selectedH3Index, walletAddress, purchaseDate);
 
             // 2. Prepare Transaction
             const amountDrops = "10000000"; // 10 XRP
@@ -302,6 +308,41 @@ const GlobeViewer = () => {
                 ref={containerRef}
                 style={{ width: '100%', height: '100%', margin: 0, padding: 0, overflow: 'hidden' }}
             />
+
+            {/* Global Date Filter */}
+            <div style={{
+                position: 'absolute',
+                top: '20px',
+                right: '20px',
+                padding: '15px',
+                background: 'rgba(0, 0, 0, 0.8)',
+                color: 'white',
+                borderRadius: '12px',
+                backdropFilter: 'blur(10px)',
+                border: '1px solid rgba(255, 255, 255, 0.2)',
+                fontFamily: 'Inter, sans-serif',
+                zIndex: 1000,
+                boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
+            }}>
+                <label style={{ display: 'block', marginBottom: '5px', fontSize: '12px', opacity: 0.8 }}>
+                    Filter by Game Time (Hour)
+                </label>
+                <input
+                    type="datetime-local"
+                    value={filterDate}
+                    onChange={(e) => setFilterDate(e.target.value)}
+                    style={{
+                        padding: '8px',
+                        borderRadius: '6px',
+                        border: '1px solid #555',
+                        background: 'rgba(255,255,255,0.1)',
+                        color: 'white',
+                        outline: 'none',
+                        fontFamily: 'inherit'
+                    }}
+                />
+            </div>
+
             {selectedH3Index && (
                 <div style={{
                     position: 'absolute',
@@ -336,9 +377,33 @@ const GlobeViewer = () => {
                             <div style={{ fontSize: '10px', marginTop: '4px', color: '#ccc' }}>
                                 {lockedTiles.get(selectedH3Index).owner.address}
                             </div>
+                            <div style={{ fontSize: '10px', marginTop: '4px', color: '#ccc' }}>
+                                📅 {new Date(lockedTiles.get(selectedH3Index).gameDate).toLocaleString()}
+                            </div>
                         </div>
                     ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            <div>
+                                <label style={{ display: 'block', marginBottom: '5px', fontSize: '12px', opacity: 0.8 }}>
+                                    Game Date & Time
+                                </label>
+                                <input
+                                    type="datetime-local"
+                                    value={purchaseDate}
+                                    onChange={(e) => setPurchaseDate(e.target.value)}
+                                    style={{
+                                        width: '100%',
+                                        padding: '8px',
+                                        borderRadius: '6px',
+                                        border: '1px solid #555',
+                                        background: 'rgba(255,255,255,0.1)',
+                                        color: 'white',
+                                        outline: 'none',
+                                        marginBottom: '10px',
+                                        boxSizing: 'border-box'
+                                    }}
+                                />
+                            </div>
                             <input
                                 type="text"
                                 placeholder="Enter Wallet Address"

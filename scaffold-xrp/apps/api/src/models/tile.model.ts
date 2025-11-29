@@ -38,6 +38,13 @@ const TileSchema = new mongoose.Schema({
         purchasedAt: { type: Date, default: Date.now }
     },
 
+    // 6. DATE DU JEU (Pour le filtrage temporel)
+    gameDate: {
+        type: Date,
+        required: true,
+        index: true
+    },
+
     // 5. DONNEES BLOCKCHAIN & SAT
     metadata: {
         pricePaid: String,      // "10000000" (drops)
