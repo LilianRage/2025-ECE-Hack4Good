@@ -36,3 +36,26 @@ export const lockTile = async (h3Index, userWallet) => {
         throw error;
     }
 };
+
+export const confirmTile = async (h3Index, txHash, userWallet) => {
+    try {
+        const response = await fetch(`${API_URL}/tile/confirm`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ h3Index, txHash, userWallet }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || 'Failed to confirm tile');
+        }
+
+        return data;
+    } catch (error) {
+        console.error('Error confirming tile:', error);
+        throw error;
+    }
+};

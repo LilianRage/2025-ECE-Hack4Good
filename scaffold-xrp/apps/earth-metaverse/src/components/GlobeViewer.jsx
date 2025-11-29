@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import * as Cesium from 'cesium';
 import * as h3 from 'h3-js';
 import 'cesium/Build/Cesium/Widgets/widgets.css';
-import { fetchTiles, lockTile } from '../services/api';
+import { fetchTiles, lockTile, confirmTile } from '../services/api';
 
 const GlobeViewer = () => {
     const containerRef = useRef(null);
@@ -200,22 +200,97 @@ const GlobeViewer = () => {
         return () => window.removeEventListener('message', handleMessage);
     }, []);
 
-    const handleLockTile = async () => {
+    const handleBuyTile = async () => {
         if (!selectedH3Index) return;
         if (!walletAddress.trim()) {
-            alert('Please enter a wallet address');
+            alert('Please connect your wallet first (or enter address)');
             return;
         }
 
         setIsLocking(true);
         try {
+            // 1. Lock the tile
+            console.log('Locking tile...');
             await lockTile(selectedH3Index, walletAddress);
+
+            // 2. Prepare Transaction
+            const amountDrops = "10000000"; // 10 XRP
+            const destination = "r34oNndfhcrg5699bV5jMKyTytba4KPgne"; // Merchant Wallet
+            // Memo must be hex encoded h3Index
+            const memoData = Array.from(new TextEncoder().encode(selectedH3Index))
+                .map(b => b.toString(16).padStart(2, '0'))
+                .join('')
+                .toUpperCase();
+
+            const transaction = {
+                TransactionType: 'Payment',
+                Destination: destination,
+                Amount: amountDrops,
+                Memos: [
+                    {
+                        Memo: {
+                            MemoData: memoData,
+                            MemoType: "6833496E646578", // "h3Index" in hex (optional)
+                            MemoFormat: "746578742F706C61696E" // "text/plain" in hex (optional)
+                        }
+                    }
+                ]
+            };
+
+            // 3. Sign with Wallet (via Parent)
+            console.log('Requesting signature from parent...', transaction);
+
+            // Create a promise to wait for the response
+            const signPromise = new Promise((resolve, reject) => {
+                const handleSignResponse = (event) => {
+                    // if (event.origin !== "http://localhost:3000") return; // Optional check
+
+                    if (event.data?.type === 'SIGN_TRANSACTION_RESULT') {
+                        window.removeEventListener('message', handleSignResponse);
+                        resolve(event.data.result);
+                    } else if (event.data?.type === 'SIGN_TRANSACTION_ERROR') {
+                        window.removeEventListener('message', handleSignResponse);
+                        reject(new Error(event.data.error));
+                    }
+                };
+                window.addEventListener('message', handleSignResponse);
+
+                // Send request to parent
+                window.parent.postMessage(
+                    { type: 'SIGN_TRANSACTION', transaction },
+                    '*' // Target origin (ideally http://localhost:3000)
+                );
+
+                // Timeout safety
+                setTimeout(() => {
+                    window.removeEventListener('message', handleSignResponse);
+                    reject(new Error('Signing timed out'));
+                }, 60000); // 1 minute timeout
+            });
+
+            const response = await signPromise;
+            console.log('Wallet Response:', response);
+
+            // Handle different response formats
+            const txHash = response?.result?.hash || response?.response?.hash || response?.hash;
+
+            if (!txHash) {
+                throw new Error('Transaction failed or rejected');
+            }
+
+            console.log('Transaction sent! Hash:', txHash);
+
+            // 4. Confirm with Backend
+            console.log('Confirming purchase...');
+            await confirmTile(selectedH3Index, txHash, walletAddress);
 
             // Refresh tiles
             await loadTiles();
-            alert(`Tile ${selectedH3Index} locked successfully!`);
+            alert(`Tile ${selectedH3Index} purchased successfully!`);
+
         } catch (error) {
-            alert(`Failed to lock tile: ${error.message}`);
+            console.error(error);
+            alert(`Failed to buy tile: ${error.message}`);
         } finally {
             setIsLocking(false);
         }
@@ -257,7 +332,7 @@ const GlobeViewer = () => {
                             textAlign: 'center',
                             color: '#ff6b6b'
                         }}>
-                            🔒 Locked by Owner
+                            {lockedTiles.get(selectedH3Index).status === 'OWNED' ? '👑 Owned' : '🔒 Locked'}
                             <div style={{ fontSize: '10px', marginTop: '4px', color: '#ccc' }}>
                                 {lockedTiles.get(selectedH3Index).owner.address}
                             </div>
@@ -282,7 +357,7 @@ const GlobeViewer = () => {
                                 }}
                             />
                             <button
-                                onClick={handleLockTile}
+                                onClick={handleBuyTile}
                                 disabled={isLocking}
                                 style={{
                                     width: '100%',
@@ -296,7 +371,7 @@ const GlobeViewer = () => {
                                     transition: 'transform 0.1s',
                                 }}
                             >
-                                {isLocking ? 'Locking...' : 'Lock Tile'}
+                                {isLocking ? 'Processing...' : 'Buy Tile (10 XRP)'}
                             </button>
                         </div>
                     )}

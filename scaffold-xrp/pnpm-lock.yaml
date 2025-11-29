@@ -32,6 +32,9 @@ importers:
       mongoose:
         specifier: ^9.0.0
         version: 9.0.0
+      xrpl:
+        specifier: ^3.0.0
+        version: 3.1.0
     devDependencies:
       '@types/cors':
         specifier: ^2.8.17
