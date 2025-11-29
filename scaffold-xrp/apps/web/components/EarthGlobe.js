@@ -2,7 +2,7 @@
 
 export function EarthGlobe() {
     return (
-        <div className="h-[600px] w-full relative overflow-hidden rounded-xl border border-gray-200 shadow-lg bg-black">
+        <div className="h-full w-full relative">
             <iframe
                 src="http://localhost:5173"
                 className="w-full h-full border-none"

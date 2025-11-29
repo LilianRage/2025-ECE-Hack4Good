@@ -9,28 +9,28 @@ export function Header() {
   const { statusMessage } = useWallet();
 
   return (
-    <header className="bg-white border-b border-gray-200">
-      <div className="container mx-auto px-4 py-4">
+    <header className="w-full bg-transparent">
+      <div className="container mx-auto px-4 py-6">
         <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <div className="w-10 h-10 bg-xrpl rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-xl">X</span>
-            </div>
-            <span className="text-xl font-bold">Scaffold-XRP</span>
+          {/* Logo */}
+          <div className="flex items-center">
+            <span className="text-3xl font-bold">
+              a<span className="text-primary">X</span>es.
+            </span>
           </div>
 
+          {/* Actions */}
           <div className="flex items-center space-x-4">
             {statusMessage && (
               <div
-                className={`text-sm px-3 py-1 rounded-lg ${
-                  statusMessage.type === "success"
-                    ? "bg-green-50 text-green-700"
+                className={`text - sm px - 3 py - 1 rounded - lg border ${statusMessage.type === "success"
+                    ? "bg-green-500/10 text-green-400 border-green-500/20"
                     : statusMessage.type === "error"
-                    ? "bg-red-50 text-red-700"
-                    : statusMessage.type === "warning"
-                    ? "bg-yellow-50 text-yellow-700"
-                    : "bg-blue-50 text-blue-700"
-                }`}
+                      ? "bg-red-500/10 text-red-400 border-red-500/20"
+                      : statusMessage.type === "warning"
+                        ? "bg-yellow-500/10 text-yellow-400 border-yellow-500/20"
+                        : "bg-blue-500/10 text-blue-400 border-blue-500/20"
+                  } `}
               >
                 {statusMessage.message}
               </div>

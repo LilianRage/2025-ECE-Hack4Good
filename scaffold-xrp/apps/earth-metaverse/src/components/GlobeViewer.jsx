@@ -28,6 +28,11 @@ const GlobeViewer = () => {
             creditContainer: document.createElement('div'), // Hide credits or move them
         });
 
+        // Set pure black background (no stars)
+        viewer.scene.backgroundColor = Cesium.Color.BLACK;
+        viewer.scene.skyBox = undefined; // Remove skybox (stars)
+        viewer.scene.skyAtmosphere = undefined; // Remove atmosphere
+
         // --- H3 Integration ---
 
         // Generate global hexagons at Resolution 3 (approx 41,162 cells)

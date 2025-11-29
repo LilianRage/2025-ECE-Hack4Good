@@ -2,6 +2,9 @@
 
 import { useState } from "react";
 import { useWallet } from "./providers/WalletProvider";
+import { Card, CardHeader, CardTitle, CardContent } from "./ui/card";
+import { Input } from "./ui/input";
+import { Button } from "./ui/button";
 
 export function TransactionForm() {
   const { walletManager, isConnected, addEvent, showStatus } = useWallet();
@@ -60,75 +63,57 @@ export function TransactionForm() {
   }
 
   return (
-    <div className="card">
-      <h2 className="text-xl font-bold mb-4">Send Transaction</h2>
+    <div className="space-y-4">
+      <h3 className="text-xs text-gray-500 uppercase tracking-wider mb-4">Send Transaction</h3>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Destination Address
-          </label>
-          <input
+          <label className="block text-xs text-gray-500 mb-2">Destination Address</label>
+          <Input
             type="text"
             placeholder="rN7n7otQDd6FczFgLdlqtyMVrn3HMfXoQT"
             value={destination}
             onChange={(e) => setDestination(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-accent focus:border-transparent"
+            className="bg-transparent border-white/20 text-white placeholder:text-gray-600 text-sm"
             required
           />
         </div>
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Amount (drops)
-          </label>
-          <input
+          <label className="block text-xs text-gray-500 mb-2">Amount (drops)</label>
+          <Input
             type="number"
             placeholder="1000000"
             min="1"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-accent focus:border-transparent"
+            className="bg-transparent border-white/20 text-white placeholder:text-gray-600 text-sm"
             required
           />
-          <small className="text-xs text-gray-500 mt-1 block">
-            1 XRP = 1,000,000 drops
-          </small>
+          <small className="text-xs text-gray-600 mt-1 block">1 XRP = 1,000,000 drops</small>
         </div>
-        <button
+        <Button
           type="submit"
           disabled={isLoading}
-          className="w-full bg-accent text-white py-2 px-4 rounded-lg font-semibold hover:bg-accent/90 disabled:bg-gray-400 disabled:cursor-not-allowed"
+          className="w-full bg-white text-black hover:bg-gray-200 h-10"
         >
           {isLoading ? "Signing & Submitting..." : "Sign & Submit Transaction"}
-        </button>
+        </Button>
       </form>
 
       {result && (
-        <div
-          className={`mt-4 p-4 rounded-lg ${
-            result.success
-              ? "bg-green-50 border border-green-200"
-              : "bg-red-50 border border-red-200"
-          }`}
-        >
+        <div className={`mt-4 p-3 rounded border text-sm ${result.success
+            ? "bg-green-500/10 border-green-500/20 text-green-400"
+            : "bg-red-500/10 border-red-500/20 text-red-400"
+          }`}>
           {result.success ? (
             <>
-              <h3 className="font-bold text-green-800 mb-2">Transaction Submitted!</h3>
-              <p className="text-sm text-green-700">
-                <strong>Hash:</strong> {result.hash}
-              </p>
-              {result.id && (
-                <p className="text-sm text-green-700">
-                  <strong>ID:</strong> {result.id}
-                </p>
-              )}
-              <p className="text-xs text-green-600 mt-2">
-                ✅ Transaction has been signed and submitted to the ledger
-              </p>
+              <div className="font-semibold mb-1">Transaction Submitted</div>
+              <div className="text-xs opacity-80">Hash: {result.hash}</div>
+              {result.id && <div className="text-xs opacity-80">ID: {result.id}</div>}
             </>
           ) : (
             <>
-              <h3 className="font-bold text-red-800 mb-2">Transaction Failed</h3>
-              <p className="text-sm text-red-700">{result.error}</p>
+              <div className="font-semibold mb-1">Transaction Failed</div>
+              <div className="text-xs opacity-80">{result.error}</div>
             </>
           )}
         </div>
