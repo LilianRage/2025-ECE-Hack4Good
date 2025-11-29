@@ -6,9 +6,9 @@ import { useWalletConnector } from "../hooks/useWalletConnector";
 
 const THEMES = {
   dark: {
-    "--xc-background-color": "#1a202c",
-    "--xc-background-secondary": "#2d3748",
-    "--xc-background-tertiary": "#4a5568",
+    "--xc-background-color": "rgba(26, 32, 44, 0.8)", // Semi-transparent
+    "--xc-background-secondary": "rgba(45, 55, 72, 0.8)",
+    "--xc-background-tertiary": "rgba(74, 85, 104, 0.8)",
     "--xc-text-color": "#F5F4E7",
     "--xc-text-muted-color": "rgba(245, 244, 231, 0.6)",
     "--xc-primary-color": "#3b99fc",
@@ -68,8 +68,11 @@ export function WalletConnector() {
       style={{
         ...THEMES[currentTheme],
         "--xc-font-family": "inherit",
-        "--xc-border-radius": "12px",
-        "--xc-modal-box-shadow": "0 10px 40px rgba(0, 0, 0, 0.3)",
+        "--xc-border-radius": "8px",
+        "--xc-modal-box-shadow": "0 10px 40px rgba(0, 0, 0, 0.5)",
+        "--xc-button-background-color": "rgba(0, 0, 0, 0.3)", // Transparent black
+        "--xc-button-hover-background-color": "rgba(0, 0, 0, 0.5)",
+        "backdrop-filter": "blur(8px)", // Try to apply blur if supported by the web component host
       }}
       primary-wallet="xaman"
     />

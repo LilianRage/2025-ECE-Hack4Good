@@ -6,7 +6,7 @@ import { WalletProvider } from "../components/providers/WalletProvider";
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
-      <body className="bg-gray-50">
+      <body className="bg-black">
         <WalletProvider>{children}</WalletProvider>
       </body>
     </html>

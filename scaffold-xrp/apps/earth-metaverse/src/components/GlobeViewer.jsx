@@ -54,13 +54,34 @@ const GlobeViewer = () => {
             homeButton: false,
             infoBox: false,
             sceneModePicker: false,
-            selectionIndicator: false,
+            selectionIndicator: true, // Keep true to avoid "undefined" errors, hide manually
             timeline: false,
             navigationHelpButton: false,
             navigationInstructionsInitiallyVisible: false,
             creditContainer: document.createElement('div'), // Hide credits or move them
+            contextOptions: {
+                webgl: {
+                    alpha: true,
+                }
+            }
         });
         viewerRef.current = viewer;
+
+        // Theme: Deep Space / Futuristic (Black Background)
+        viewer.scene.skyBox.show = false;
+        viewer.scene.sun.show = false;
+        viewer.scene.moon.show = false;
+        viewer.scene.skyAtmosphere.show = false;
+        viewer.scene.backgroundColor = Cesium.Color.BLACK;
+
+        // Manually hide selection indicator
+        if (viewer.selectionIndicator) {
+            // We hide the container or the element
+            const indicator = viewer.selectionIndicator.viewModel.selectionIndicatorElement;
+            if (indicator) {
+                indicator.style.display = 'none';
+            }
+        }
 
         // --- H3 Integration ---
 
@@ -82,8 +103,10 @@ const GlobeViewer = () => {
         const conflictZoneSet = new Set(conflictZoneHexes);
 
         // Fly to the target
+        // Fly to the target with an offset to center it in the visible area (left of the menu)
+        // We shift the camera target to the RIGHT (East) so the Earth appears to the LEFT
         viewer.camera.flyTo({
-            destination: Cesium.Cartesian3.fromDegrees(targetLon, targetLat, 2000000), // Zoomed out enough to see context
+            destination: Cesium.Cartesian3.fromDegrees(targetLon + 25, targetLat, 12000000),
         });
 
         // Add Label (Keep label, remove polygon overlay)
@@ -341,7 +364,7 @@ const GlobeViewer = () => {
 
             // 2. Prepare Transaction
             const amountDrops = "10000000"; // 10 XRP
-            const destination = "r34oNndfhcrg5699bV5jMKyTytba4KPgne"; // Merchant Wallet
+            const destination = "rP3oLJYmRLujC2EAjBXLPe2MCyBsKHaPSY"; // Merchant Wallet
             // Memo 1: H3 Index
             const memoDataH3 = Array.from(new TextEncoder().encode(selectedH3Index))
                 .map(b => b.toString(16).padStart(2, '0'))

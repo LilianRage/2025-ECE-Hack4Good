@@ -9,32 +9,21 @@ export function Header() {
   const { statusMessage } = useWallet();
 
   return (
-    <header className="bg-white border-b border-gray-200">
-      <div className="container mx-auto px-4 py-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <div className="w-10 h-10 bg-xrpl rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-xl">X</span>
-            </div>
-            <span className="text-xl font-bold">Scaffold-XRP</span>
+    <header className="bg-transparent border-none py-6 absolute top-0 left-0 w-full z-50 pointer-events-none">
+      <div className="container mx-auto px-12">
+        <div className="flex items-center justify-between pointer-events-auto">
+          {/* Logo */}
+          <div className="flex items-center">
+            <span className="text-white font-bold text-3xl tracking-tight">
+              a<span className="text-[#60d5f5]">X</span>es.
+            </span>
           </div>
 
-          <div className="flex items-center space-x-4">
-            {statusMessage && (
-              <div
-                className={`text-sm px-3 py-1 rounded-lg ${
-                  statusMessage.type === "success"
-                    ? "bg-green-50 text-green-700"
-                    : statusMessage.type === "error"
-                    ? "bg-red-50 text-red-700"
-                    : statusMessage.type === "warning"
-                    ? "bg-yellow-50 text-yellow-700"
-                    : "bg-blue-50 text-blue-700"
-                }`}
-              >
-                {statusMessage.message}
-              </div>
-            )}
+          {/* Right Side */}
+          <div className="flex items-center space-x-6">
+            <span className="text-gray-400 text-sm font-medium hidden md:block bg-black/50 px-3 py-1 rounded-lg backdrop-blur-sm border border-white/10">
+              r34o...Pgne
+            </span>
             <WalletConnector />
           </div>
         </div>

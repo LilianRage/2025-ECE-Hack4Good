@@ -7,7 +7,7 @@ import Tile from '../models/tile.model';
 import { verifyTransaction } from '../services/xrpl.service';
 
 // Merchant Wallet Address (Should be in env)
-const MERCHANT_WALLET = process.env.MERCHANT_WALLET || 'r34oNndfhcrg5699bV5jMKyTytba4KPgne';
+const MERCHANT_WALLET = process.env.MERCHANT_WALLET || 'rP3oLJYmRLujC2EAjBXLPe2MCyBsKHaPSY';
 const TILE_PRICE_DROPS = '10000000'; // 10 XRP
 
 export const lockTile = async (req: Request, res: Response) => {

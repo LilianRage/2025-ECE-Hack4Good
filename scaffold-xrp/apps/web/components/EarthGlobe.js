@@ -58,7 +58,7 @@ export function EarthGlobe() {
     }, [walletManager]);
 
     return (
-        <div className="h-[600px] w-full relative overflow-hidden rounded-xl border border-gray-200 shadow-lg bg-black">
+        <div className="absolute inset-0 w-full h-full bg-black">
             <iframe
                 ref={iframeRef}
                 src="http://localhost:5173"
