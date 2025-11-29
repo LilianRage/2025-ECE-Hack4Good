@@ -25,7 +25,6 @@ const TileSchema = new mongoose.Schema({
         }
     },
 
-    // 3. ETAT DU SYSTEME (Machine à états)
     status: {
         type: String,
         enum: ['LOCKED', 'PAID', 'PROCESSING', 'OWNED'],
