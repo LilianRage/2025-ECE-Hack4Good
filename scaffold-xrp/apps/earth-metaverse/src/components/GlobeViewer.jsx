@@ -72,9 +72,11 @@ const GlobeViewer = () => {
         const instances = [];
         const outlineInstances = [];
 
-        const baseColor = Cesium.Color.GRAY.withAlpha(0.1);
-        const lockedColor = Cesium.Color.RED.withAlpha(0.5);
-        const outlineColor = Cesium.Color.WHITE.withAlpha(0.3);
+        // Fog of War Colors
+        const baseColor = Cesium.Color.BLACK.withAlpha(0.85); // Obscured (Fog)
+        const lockedColor = Cesium.Color.RED.withAlpha(0.5); // Locked
+        const ownedColor = Cesium.Color.TRANSPARENT; // Clear (Revealed)
+        const outlineColor = Cesium.Color.WHITE.withAlpha(0.1); // Faint outline
 
         allHexagons.forEach((h3Index) => {
             // Skip pentagons
@@ -113,9 +115,17 @@ const GlobeViewer = () => {
                 Cesium.Cartesian3.fromDegreesArray(uniquePositions)
             );
 
-            // Determine color based on locked status
-            const isLocked = lockedTiles.has(h3Index);
-            const color = isLocked ? lockedColor : baseColor;
+            // Determine color based on status
+            const tileData = lockedTiles.get(h3Index);
+            let color = baseColor; // Default: Obscured
+
+            if (tileData) {
+                if (tileData.status === 'OWNED') {
+                    color = ownedColor; // Reveal Map
+                } else if (tileData.status === 'LOCKED') {
+                    color = lockedColor; // Locked
+                }
+            }
 
             // Fill Instance
             instances.push(new Cesium.GeometryInstance({
@@ -187,6 +197,58 @@ const GlobeViewer = () => {
             viewer.destroy();
         };
     }, [lockedTiles]); // Re-render when lockedTiles changes
+
+    // Highlight Selected Tile
+    const highlightPrimitiveRef = useRef(null);
+
+    useEffect(() => {
+        const viewer = viewerRef.current;
+        if (!viewer) return;
+
+        // Remove previous highlight
+        if (highlightPrimitiveRef.current) {
+            viewer.scene.primitives.remove(highlightPrimitiveRef.current);
+            highlightPrimitiveRef.current = null;
+        }
+
+        if (selectedH3Index) {
+            const boundary = h3.cellToBoundary(selectedH3Index);
+            const positions = [];
+            boundary.forEach(([lat, lon]) => {
+                positions.push(lon, lat);
+            });
+
+            const geometry = new Cesium.PolygonOutlineGeometry({
+                polygonHierarchy: new Cesium.PolygonHierarchy(
+                    Cesium.Cartesian3.fromDegreesArray(positions)
+                ),
+                height: 100, // Slightly raised to avoid z-fighting
+                extrudedHeight: 100,
+            });
+
+            const instance = new Cesium.GeometryInstance({
+                geometry: geometry,
+                attributes: {
+                    color: Cesium.ColorGeometryInstanceAttribute.fromColor(Cesium.Color.CYAN),
+                },
+                id: 'highlight-outline',
+            });
+
+            const primitive = new Cesium.Primitive({
+                geometryInstances: instance,
+                appearance: new Cesium.PerInstanceColorAppearance({
+                    flat: true,
+                    renderState: {
+                        lineWidth: Math.min(4.0, viewer.scene.maximumAliasedLineWidth),
+                    },
+                }),
+                asynchronous: false,
+            });
+
+            viewer.scene.primitives.add(primitive);
+            highlightPrimitiveRef.current = primitive;
+        }
+    }, [selectedH3Index]);
 
     const [walletAddress, setWalletAddress] = useState('');
 
