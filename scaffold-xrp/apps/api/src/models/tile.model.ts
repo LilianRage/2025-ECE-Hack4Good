@@ -51,7 +51,9 @@ const TileSchema = new mongoose.Schema({
         txHash: String,         // Hash de la transaction d'achat
         nftId: String,          // ID du NFT minté (optionnel)
         ipfsImage: String,      // URL de l'image satellite finale
-        satelliteProvider: String // "Planet", "Maxar"
+        satelliteProvider: String, // "Planet", "Maxar"
+        imageUrl: String,       // Simulated Image URL
+        imageHash: String       // Simulated Image Hash
     }
 }, { timestamps: true });
 

@@ -75,7 +75,7 @@ const GlobeViewer = () => {
         // Fog of War Colors
         const baseColor = Cesium.Color.BLACK.withAlpha(0.85); // Obscured (Fog)
         const lockedColor = Cesium.Color.RED.withAlpha(0.5); // Locked
-        const ownedColor = Cesium.Color.TRANSPARENT; // Clear (Revealed)
+        const ownedColor = Cesium.Color.WHITE.withAlpha(0.01); // Nearly transparent for picking
         const outlineColor = Cesium.Color.WHITE.withAlpha(0.1); // Faint outline
 
         allHexagons.forEach((h3Index) => {
@@ -279,16 +279,21 @@ const GlobeViewer = () => {
         try {
             // 1. Lock the tile
             console.log('Locking tile...');
-            await lockTile(selectedH3Index, walletAddress, purchaseDate);
+            const lockResponse = await lockTile(selectedH3Index, walletAddress, purchaseDate);
+            const { imageHash } = lockResponse;
+            console.log('Received Image Hash:', imageHash);
 
             // 2. Prepare Transaction
             const amountDrops = "10000000"; // 10 XRP
             const destination = "r34oNndfhcrg5699bV5jMKyTytba4KPgne"; // Merchant Wallet
-            // Memo must be hex encoded h3Index
-            const memoData = Array.from(new TextEncoder().encode(selectedH3Index))
+            // Memo 1: H3 Index
+            const memoDataH3 = Array.from(new TextEncoder().encode(selectedH3Index))
                 .map(b => b.toString(16).padStart(2, '0'))
                 .join('')
                 .toUpperCase();
+
+            // Memo 2: Image Hash (Already Hex)
+            const memoDataHash = imageHash.toUpperCase();
 
             const transaction = {
                 TransactionType: 'Payment',
@@ -297,9 +302,16 @@ const GlobeViewer = () => {
                 Memos: [
                     {
                         Memo: {
-                            MemoData: memoData,
-                            MemoType: "6833496E646578", // "h3Index" in hex (optional)
-                            MemoFormat: "746578742F706C61696E" // "text/plain" in hex (optional)
+                            MemoData: memoDataH3,
+                            MemoType: "6833496E646578", // "h3Index" in hex
+                            MemoFormat: "746578742F706C61696E" // "text/plain" in hex
+                        }
+                    },
+                    {
+                        Memo: {
+                            MemoData: memoDataHash,
+                            MemoType: "496D61676548617368", // "ImageHash" in hex
+                            MemoFormat: "746578742F706C61696E" // "text/plain" in hex
                         }
                     }
                 ]
@@ -428,20 +440,54 @@ const GlobeViewer = () => {
 
                     {lockedTiles.has(selectedH3Index) ? (
                         <div style={{
-                            padding: '8px',
-                            background: 'rgba(255, 50, 50, 0.2)',
-                            border: '1px solid rgba(255, 50, 50, 0.5)',
-                            borderRadius: '6px',
-                            textAlign: 'center',
-                            color: '#ff6b6b'
+                            padding: '12px',
+                            background: 'rgba(255, 50, 50, 0.1)',
+                            border: '1px solid rgba(255, 50, 50, 0.3)',
+                            borderRadius: '8px',
+                            textAlign: 'left',
+                            color: '#eee'
                         }}>
-                            {lockedTiles.get(selectedH3Index).status === 'OWNED' ? '👑 Owned' : '🔒 Locked'}
-                            <div style={{ fontSize: '10px', marginTop: '4px', color: '#ccc' }}>
-                                {lockedTiles.get(selectedH3Index).owner.address}
+                            <div style={{ fontWeight: 'bold', color: lockedTiles.get(selectedH3Index).status === 'OWNED' ? '#4ade80' : '#ff6b6b', marginBottom: '8px' }}>
+                                {lockedTiles.get(selectedH3Index).status === 'OWNED' ? '👑 Owned' : '🔒 Locked'}
                             </div>
-                            <div style={{ fontSize: '10px', marginTop: '4px', color: '#ccc' }}>
+
+                            <div style={{ fontSize: '11px', marginBottom: '4px', color: '#ccc' }}>
+                                👤 <span style={{ fontFamily: 'monospace' }}>{lockedTiles.get(selectedH3Index).owner.address}</span>
+                            </div>
+                            <div style={{ fontSize: '11px', marginBottom: '8px', color: '#ccc' }}>
                                 📅 {new Date(lockedTiles.get(selectedH3Index).gameDate).toLocaleString()}
                             </div>
+
+                            {lockedTiles.get(selectedH3Index).status === 'OWNED' && lockedTiles.get(selectedH3Index).metadata && (
+                                <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+                                    {lockedTiles.get(selectedH3Index).metadata.imageUrl && (
+                                        <img
+                                            src={lockedTiles.get(selectedH3Index).metadata.imageUrl}
+                                            alt="Satellite View"
+                                            style={{ width: '100%', borderRadius: '4px', marginBottom: '8px' }}
+                                        />
+                                    )}
+                                    <div style={{ fontSize: '10px', wordBreak: 'break-all', marginBottom: '4px' }}>
+                                        <strong>TX Hash:</strong><br />
+                                        <a
+                                            href={`https://testnet.xrpl.org/transactions/${lockedTiles.get(selectedH3Index).metadata.txHash}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            style={{ color: '#60a5fa', textDecoration: 'none' }}
+                                        >
+                                            {lockedTiles.get(selectedH3Index).metadata.txHash}
+                                        </a>
+                                    </div>
+                                    {lockedTiles.get(selectedH3Index).metadata.imageHash && (
+                                        <div style={{ fontSize: '10px', wordBreak: 'break-all' }}>
+                                            <strong>Img Hash:</strong><br />
+                                            <span style={{ fontFamily: 'monospace', color: '#aaa' }}>
+                                                {lockedTiles.get(selectedH3Index).metadata.imageHash}
+                                            </span>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>

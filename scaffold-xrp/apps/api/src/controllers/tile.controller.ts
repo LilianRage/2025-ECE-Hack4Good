@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { cellToLatLng } from 'h3-js';
+import crypto from 'crypto';
 import Tile from '../models/tile.model';
 import { verifyTransaction } from '../services/xrpl.service';
 
@@ -45,14 +46,31 @@ export const lockTile = async (req: Request, res: Response) => {
             return res.status(409).json({ error: 'Tile is currently locked or owned.' });
         }
 
+        // --- SIMULATION: Satellite Image Fetching ---
+        // 1. Fetch random image
+        const imageUrl = `https://picsum.photos/seed/${h3Index}/500/500`; // Deterministic seed based on H3
+        const imageResponse = await fetch(imageUrl);
+        const imageBuffer = await imageResponse.arrayBuffer();
+
+        // 2. Hash the image content
+        const imageHash = crypto.createHash('sha256').update(Buffer.from(imageBuffer)).digest('hex');
+
+        console.log(`Simulated Satellite Image: ${imageUrl}`);
+        console.log(`Image Hash: ${imageHash}`);
+        // --------------------------------------------
+
         const tile = await Tile.create({
             _id: h3Index,
             location: { coordinates: [lon, lat] }, // Note the inversion!
             status: 'LOCKED',
             owner: { address: userWallet },
-            gameDate: new Date(gameDate)
+            gameDate: new Date(gameDate),
+            metadata: {
+                imageUrl: imageUrl,
+                imageHash: imageHash
+            }
         });
-        return res.status(201).json({ success: true, tile });
+        return res.status(201).json({ success: true, tile, imageHash });
     } catch (error: any) {
         if (error.code === 11000) {
             return res.status(409).json({ error: 'Tile already taken!' });
@@ -147,7 +165,7 @@ export const getTilesInView = async (req: Request, res: Response) => {
 
     try {
         const tiles = await Tile.find(query)
-            .select('_id status owner.address metadata.ipfsImage gameDate')
+            .select('_id status owner.address metadata.ipfsImage metadata.txHash metadata.imageUrl metadata.imageHash metadata.pricePaid gameDate')
             .lean();
 
         return res.status(200).json(tiles);
