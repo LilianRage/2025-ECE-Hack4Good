@@ -3,6 +3,7 @@
 import { Header } from "../components/Header";
 import { AccountInfo } from "../components/AccountInfo";
 import { TransactionForm } from "../components/TransactionForm";
+import { EarthGlobe } from "../components/EarthGlobe";
 
 export default function Home() {
   return (
@@ -15,6 +16,10 @@ export default function Home() {
           <p className="text-gray-600">
             A starter kit for building dApps on XRPL
           </p>
+        </div>
+
+        <div className="mb-8">
+          <EarthGlobe />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
