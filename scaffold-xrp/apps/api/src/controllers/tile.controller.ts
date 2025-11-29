@@ -46,7 +46,7 @@ export const getTilesInView = async (req: Request, res: Response) => {
                     ]
                 }
             },
-            status: { $ne: 'LOCKED' } // Don't show tiles currently being processed/locked
+            status: 'LOCKED' // We WANT to show locked tiles
         })
             .select('_id status owner.address metadata.ipfsImage')
             .lean();

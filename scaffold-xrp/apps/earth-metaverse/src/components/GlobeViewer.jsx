@@ -1,12 +1,39 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 
 import * as Cesium from 'cesium';
 import * as h3 from 'h3-js';
 import 'cesium/Build/Cesium/Widgets/widgets.css';
+import { fetchTiles, lockTile } from '../services/api';
 
 const GlobeViewer = () => {
     const containerRef = useRef(null);
+    const viewerRef = useRef(null);
     const [selectedH3Index, setSelectedH3Index] = useState(null);
+    const [lockedTiles, setLockedTiles] = useState(new Map()); // Map<h3Index, tileData>
+    const [isLocking, setIsLocking] = useState(false);
+
+    // Fetch tiles function
+    const loadTiles = useCallback(async () => {
+        // For now, we fetch a large area or all. 
+        // In a real app with millions of tiles, we'd use the camera bbox.
+        // Here we just fetch everything for simplicity as we don't have many locked tiles yet.
+        const bbox = {
+            minLon: -180,
+            minLat: -90,
+            maxLon: 180,
+            maxLat: 90
+        };
+        const tiles = await fetchTiles(bbox);
+        const newLockedTiles = new Map();
+        tiles.forEach(tile => {
+            newLockedTiles.set(tile._id, tile);
+        });
+        setLockedTiles(newLockedTiles);
+    }, []);
+
+    useEffect(() => {
+        loadTiles();
+    }, [loadTiles]);
 
     useEffect(() => {
         if (!containerRef.current) return;
@@ -27,6 +54,7 @@ const GlobeViewer = () => {
             navigationInstructionsInitiallyVisible: false,
             creditContainer: document.createElement('div'), // Hide credits or move them
         });
+        viewerRef.current = viewer;
 
         // --- H3 Integration ---
 
@@ -39,6 +67,7 @@ const GlobeViewer = () => {
         const outlineInstances = [];
 
         const baseColor = Cesium.Color.GRAY.withAlpha(0.1);
+        const lockedColor = Cesium.Color.RED.withAlpha(0.5);
         const outlineColor = Cesium.Color.WHITE.withAlpha(0.3);
 
         allHexagons.forEach((h3Index) => {
@@ -46,12 +75,8 @@ const GlobeViewer = () => {
             if (h3.isPentagon(h3Index)) return;
 
             const boundary = h3.cellToBoundary(h3Index);
-            // boundary is array of [lat, lon]
 
             // Filter 1: Check for IDL crossing
-            // If any two consecutive points have a longitude difference > 180, skip it.
-            // Unwrapping is tricky and can lead to huge bounding boxes if not done perfectly.
-            // For stability, we just drop these few tiles.
             let crossesIDL = false;
             for (let i = 0; i < boundary.length; i++) {
                 const lon = boundary[i][1];
@@ -76,22 +101,24 @@ const GlobeViewer = () => {
             });
 
             // Filter 3: Ensure at least 3 points
-            if (uniquePositions.length < 6) return; // 3 points * 2 coords
+            if (uniquePositions.length < 6) return;
 
             const polygonHierarchy = new Cesium.PolygonHierarchy(
                 Cesium.Cartesian3.fromDegreesArray(uniquePositions)
             );
+
+            // Determine color based on locked status
+            const isLocked = lockedTiles.has(h3Index);
+            const color = isLocked ? lockedColor : baseColor;
 
             // Fill Instance
             instances.push(new Cesium.GeometryInstance({
                 geometry: new Cesium.PolygonGeometry({
                     polygonHierarchy: polygonHierarchy,
                     height: 0,
-                    // Use RHUMB_LINE or GEODESIC? Default is GEODESIC.
-                    // For small hexagons, it doesn't matter much, but GEODESIC is better for globe.
                 }),
                 attributes: {
-                    color: Cesium.ColorGeometryInstanceAttribute.fromColor(baseColor),
+                    color: Cesium.ColorGeometryInstanceAttribute.fromColor(color),
                 },
                 id: h3Index,
             }));
@@ -153,7 +180,46 @@ const GlobeViewer = () => {
             handler.destroy();
             viewer.destroy();
         };
+    }, [lockedTiles]); // Re-render when lockedTiles changes
+
+    const [walletAddress, setWalletAddress] = useState('');
+
+    // Listen for wallet updates from parent (iframe container)
+    useEffect(() => {
+        const handleMessage = (event) => {
+            // Verify origin for security (optional but recommended)
+            // if (event.origin !== "http://localhost:3000") return;
+
+            if (event.data && event.data.type === 'WALLET_UPDATE') {
+                console.log("Received wallet address:", event.data.address);
+                setWalletAddress(event.data.address);
+            }
+        };
+
+        window.addEventListener('message', handleMessage);
+        return () => window.removeEventListener('message', handleMessage);
     }, []);
+
+    const handleLockTile = async () => {
+        if (!selectedH3Index) return;
+        if (!walletAddress.trim()) {
+            alert('Please enter a wallet address');
+            return;
+        }
+
+        setIsLocking(true);
+        try {
+            await lockTile(selectedH3Index, walletAddress);
+
+            // Refresh tiles
+            await loadTiles();
+            alert(`Tile ${selectedH3Index} locked successfully!`);
+        } catch (error) {
+            alert(`Failed to lock tile: ${error.message}`);
+        } finally {
+            setIsLocking(false);
+        }
+    };
 
     return (
         <div style={{ position: 'relative', width: '100%', height: '100vh' }}>
@@ -166,18 +232,74 @@ const GlobeViewer = () => {
                     position: 'absolute',
                     top: '20px',
                     left: '20px',
-                    padding: '10px 20px',
-                    background: 'rgba(0, 0, 0, 0.7)',
+                    padding: '20px',
+                    background: 'rgba(0, 0, 0, 0.8)',
                     color: 'white',
-                    borderRadius: '8px',
-                    pointerEvents: 'none',
-                    backdropFilter: 'blur(5px)',
+                    borderRadius: '12px',
+                    backdropFilter: 'blur(10px)',
                     border: '1px solid rgba(255, 255, 255, 0.2)',
-                    fontFamily: 'monospace',
-                    fontSize: '16px',
+                    fontFamily: 'Inter, sans-serif',
                     zIndex: 1000,
+                    minWidth: '200px',
+                    boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
                 }}>
-                    Selected Hexagon: <strong>{selectedH3Index}</strong>
+                    <h3 style={{ margin: '0 0 10px 0', fontSize: '18px', fontWeight: '600' }}>Tile Selected</h3>
+                    <div style={{ marginBottom: '15px', fontSize: '14px', opacity: 0.8 }}>
+                        ID: <span style={{ fontFamily: 'monospace' }}>{selectedH3Index}</span>
+                    </div>
+
+                    {lockedTiles.has(selectedH3Index) ? (
+                        <div style={{
+                            padding: '8px',
+                            background: 'rgba(255, 50, 50, 0.2)',
+                            border: '1px solid rgba(255, 50, 50, 0.5)',
+                            borderRadius: '6px',
+                            textAlign: 'center',
+                            color: '#ff6b6b'
+                        }}>
+                            🔒 Locked by Owner
+                            <div style={{ fontSize: '10px', marginTop: '4px', color: '#ccc' }}>
+                                {lockedTiles.get(selectedH3Index).owner.address}
+                            </div>
+                        </div>
+                    ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            <input
+                                type="text"
+                                placeholder="Enter Wallet Address"
+                                value={walletAddress}
+                                onChange={(e) => setWalletAddress(e.target.value)}
+                                disabled={!!walletAddress} // Disable if auto-filled
+                                style={{
+                                    padding: '8px',
+                                    borderRadius: '6px',
+                                    border: '1px solid #555',
+                                    background: 'rgba(255,255,255,0.1)',
+                                    color: 'white',
+                                    outline: 'none',
+                                    cursor: walletAddress ? 'not-allowed' : 'text',
+                                    opacity: walletAddress ? 0.7 : 1
+                                }}
+                            />
+                            <button
+                                onClick={handleLockTile}
+                                disabled={isLocking}
+                                style={{
+                                    width: '100%',
+                                    padding: '10px',
+                                    background: isLocking ? '#555' : 'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)',
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    color: 'white',
+                                    fontWeight: '600',
+                                    cursor: isLocking ? 'not-allowed' : 'pointer',
+                                    transition: 'transform 0.1s',
+                                }}
+                            >
+                                {isLocking ? 'Locking...' : 'Lock Tile'}
+                            </button>
+                        </div>
+                    )}
                 </div>
             )}
         </div>
@@ -185,3 +307,4 @@ const GlobeViewer = () => {
 };
 
 export default GlobeViewer;
+
