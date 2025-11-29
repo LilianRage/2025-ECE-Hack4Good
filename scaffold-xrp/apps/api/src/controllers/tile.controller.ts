@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import { cellToLatLng } from 'h3-js';
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 import Tile from '../models/tile.model';
 import { verifyTransaction } from '../services/xrpl.service';
 
@@ -46,16 +48,22 @@ export const lockTile = async (req: Request, res: Response) => {
             return res.status(409).json({ error: 'Tile is currently locked or owned.' });
         }
 
-        // --- SIMULATION: Satellite Image Fetching ---
-        // 1. Fetch random image
-        const imageUrl = `https://picsum.photos/seed/${h3Index}/500/500`; // Deterministic seed based on H3
-        const imageResponse = await fetch(imageUrl);
-        const imageBuffer = await imageResponse.arrayBuffer();
+        // --- SIMULATION: Local Asset Image ---
+        // 1. Read local file
+        const imagePath = path.join(__dirname, '../assets/desert.jpeg');
+        const imageBuffer = fs.readFileSync(imagePath);
 
         // 2. Hash the image content
-        const imageHash = crypto.createHash('sha256').update(Buffer.from(imageBuffer)).digest('hex');
+        const imageHash = crypto.createHash('sha256').update(imageBuffer).digest('hex');
 
-        console.log(`Simulated Satellite Image: ${imageUrl}`);
+        // 3. Construct URL (assuming server is reachable at same host/port for now)
+        // In production, this should be a full URL or relative if proxied.
+        // Using localhost for dev simulation as requested.
+        const protocol = req.protocol;
+        const host = req.get('host');
+        const imageUrl = `${protocol}://${host}/assets/desert.jpeg`;
+
+        console.log(`Using Local Image: ${imageUrl}`);
         console.log(`Image Hash: ${imageHash}`);
         // --------------------------------------------
 

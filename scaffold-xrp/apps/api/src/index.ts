@@ -4,6 +4,8 @@ import dotenv from 'dotenv';
 import connectDB from './config/db';
 import routes from './routes';
 
+import path from 'path';
+
 dotenv.config();
 
 const app = express();
@@ -14,6 +16,9 @@ connectDB();
 
 app.use(cors());
 app.use(express.json());
+
+// Serve static assets
+app.use('/assets', express.static(path.join(__dirname, 'assets')));
 
 app.use('/api', routes);
 

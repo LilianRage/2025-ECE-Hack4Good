@@ -72,11 +72,47 @@ const GlobeViewer = () => {
         const instances = [];
         const outlineInstances = [];
 
+        // --- CONFLICT ZONE DEMO ---
+        // Target Tile: 835962fffffffff (Africa)
+        const targetHex = '835962fffffffff';
+        const [targetLat, targetLon] = h3.cellToLatLng(targetHex); // Returns [lat, lon]
+
+        // Calculate Conflict Zone Tiles (k-ring 4)
+        const conflictZoneHexes = h3.gridDisk(targetHex, 4);
+        const conflictZoneSet = new Set(conflictZoneHexes);
+
+        // Fly to the target
+        viewer.camera.flyTo({
+            destination: Cesium.Cartesian3.fromDegrees(targetLon, targetLat, 2000000), // Zoomed out enough to see context
+        });
+
+        // Add Label (Keep label, remove polygon overlay)
+        viewer.entities.add({
+            id: 'conflict-zone-label',
+            position: Cesium.Cartesian3.fromDegrees(targetLon, targetLat, 100000), // Above the zone
+            label: {
+                text: 'ZONE DE CONFLIT\nMISSION COMMUNAUTAIRE',
+                font: 'bold 16px Inter, sans-serif',
+                fillColor: Cesium.Color.WHITE,
+                outlineColor: Cesium.Color.BLACK,
+                outlineWidth: 4,
+                style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+                verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+                pixelOffset: new Cesium.Cartesian2(0, -20),
+                distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 10000000)
+            }
+        });
+        // --------------------------
+
         // Fog of War Colors
         const baseColor = Cesium.Color.BLACK.withAlpha(0.85); // Obscured (Fog)
         const lockedColor = Cesium.Color.RED.withAlpha(0.5); // Locked
         const ownedColor = Cesium.Color.WHITE.withAlpha(0.01); // Nearly transparent for picking
         const outlineColor = Cesium.Color.WHITE.withAlpha(0.1); // Faint outline
+        const conflictOutlineColor = Cesium.Color.RED.withAlpha(0.8); // Red outline for conflict zone
+
+        // Clear previous entities (important for re-renders)
+        viewer.entities.removeAll();
 
         allHexagons.forEach((h3Index) => {
             // Skip pentagons
@@ -117,11 +153,31 @@ const GlobeViewer = () => {
 
             // Determine color based on status
             const tileData = lockedTiles.get(h3Index);
+
+            // SPECIAL CASE: Owned Tile with Image -> Render as Entity
+            if (tileData && tileData.status === 'OWNED' && tileData.metadata && tileData.metadata.imageUrl) {
+                viewer.entities.add({
+                    id: h3Index, // Important for picking
+                    polygon: {
+                        hierarchy: polygonHierarchy,
+                        material: new Cesium.ImageMaterialProperty({
+                            image: tileData.metadata.imageUrl,
+                            transparent: false
+                        }),
+                        height: 0,
+                        outline: true,
+                        outlineColor: conflictZoneSet.has(h3Index) ? conflictOutlineColor : outlineColor
+                    }
+                });
+                return; // Skip adding to primitive batch
+            }
+
+            // Standard Primitive Rendering (Fog / Locked / Transparent)
             let color = baseColor; // Default: Obscured
 
             if (tileData) {
                 if (tileData.status === 'OWNED') {
-                    color = ownedColor; // Reveal Map
+                    color = ownedColor; // Reveal Map (Transparent/Invisible)
                 } else if (tileData.status === 'LOCKED') {
                     color = lockedColor; // Locked
                 }
@@ -140,13 +196,16 @@ const GlobeViewer = () => {
             }));
 
             // Outline Instance
+            // Check if in conflict zone
+            const isConflictZone = conflictZoneSet.has(h3Index);
+
             outlineInstances.push(new Cesium.GeometryInstance({
                 geometry: new Cesium.PolygonOutlineGeometry({
                     polygonHierarchy: polygonHierarchy,
                     height: 0,
                 }),
                 attributes: {
-                    color: Cesium.ColorGeometryInstanceAttribute.fromColor(outlineColor),
+                    color: Cesium.ColorGeometryInstanceAttribute.fromColor(isConflictZone ? conflictOutlineColor : outlineColor),
                 },
             }));
         });
@@ -173,10 +232,7 @@ const GlobeViewer = () => {
         });
         viewer.scene.primitives.add(outlinePrimitive);
 
-        // Fly to a global view
-        viewer.camera.flyTo({
-            destination: Cesium.Cartesian3.fromDegrees(0, 20, 20000000),
-        });
+
 
         // --- Interaction (Picking) ---
         const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
@@ -464,7 +520,7 @@ const GlobeViewer = () => {
                                         <img
                                             src={lockedTiles.get(selectedH3Index).metadata.imageUrl}
                                             alt="Satellite View"
-                                            style={{ width: '100%', borderRadius: '4px', marginBottom: '8px' }}
+                                            style={{ width: '100%', maxHeight: '150px', objectFit: 'cover', borderRadius: '4px', marginBottom: '8px' }}
                                         />
                                     )}
                                     <div style={{ fontSize: '10px', wordBreak: 'break-all', marginBottom: '4px' }}>
