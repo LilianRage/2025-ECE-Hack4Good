@@ -1,15 +1,28 @@
 "use client";
 
+import { useState, useRef } from "react";
 import { Header } from "../components/Header";
 import { EarthGlobe } from "../components/EarthGlobe";
 import { DashboardPanel } from "../components/DashboardPanel";
 
 export default function Home() {
+  const [selectedTile, setSelectedTile] = useState(null);
+  const earthGlobeRef = useRef(null);
+
+  const handleRefreshTiles = (tileId) => {
+    if (earthGlobeRef.current) {
+      earthGlobeRef.current.refreshTiles(tileId);
+    }
+  };
+
   return (
     <div className="relative w-full h-screen overflow-hidden bg-black">
       {/* Background: Earth Viewer */}
       <div className="absolute inset-0 z-0">
-        <EarthGlobe />
+        <EarthGlobe
+          ref={earthGlobeRef}
+          onTileSelected={setSelectedTile}
+        />
       </div>
 
       {/* Overlay: Header */}
@@ -19,7 +32,10 @@ export default function Home() {
 
       {/* Overlay: Dashboard Panel */}
       <div className="absolute top-24 right-12 bottom-4 w-[400px] z-50">
-        <DashboardPanel />
+        <DashboardPanel
+          selectedTile={selectedTile}
+          onRefreshTiles={handleRefreshTiles}
+        />
       </div>
     </div>
   );

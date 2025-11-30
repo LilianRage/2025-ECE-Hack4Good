@@ -1,11 +1,28 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useImperativeHandle, forwardRef } from "react";
 import { useWallet } from "./providers/WalletProvider";
 
-export function EarthGlobe() {
+export const EarthGlobe = forwardRef(({ onTileSelected }, ref) => {
     const { accountInfo, walletManager } = useWallet();
     const iframeRef = useRef(null);
+
+    useImperativeHandle(ref, () => ({
+        refreshTiles: (tileId) => {
+            if (iframeRef.current) {
+                if (tileId) {
+                    iframeRef.current.contentWindow.postMessage(
+                        { type: 'PURCHASE_SUCCESS', h3Index: tileId },
+                        'http://localhost:5173'
+                    );
+                }
+                iframeRef.current.contentWindow.postMessage(
+                    { type: 'REFRESH_TILES' },
+                    'http://localhost:5173'
+                );
+            }
+        }
+    }));
 
     useEffect(() => {
         if (accountInfo?.address && iframeRef.current) {
@@ -17,11 +34,18 @@ export function EarthGlobe() {
         }
     }, [accountInfo]);
 
-    // Listen for signing requests from iframe
+    // Listen for messages from iframe
     useEffect(() => {
         const handleMessage = async (event) => {
             // Verify origin
             if (event.origin !== "http://localhost:5173") return;
+
+            if (event.data?.type === 'TILE_SELECTED') {
+                console.log("Parent received tile selection:", event.data.h3Index);
+                if (onTileSelected) {
+                    onTileSelected(event.data.h3Index);
+                }
+            }
 
             if (event.data?.type === 'SIGN_TRANSACTION') {
                 console.log("Parent received sign request:", event.data.transaction);
@@ -55,7 +79,7 @@ export function EarthGlobe() {
 
         window.addEventListener('message', handleMessage);
         return () => window.removeEventListener('message', handleMessage);
-    }, [walletManager]);
+    }, [walletManager, onTileSelected]);
 
     return (
         <div className="absolute inset-0 w-full h-full bg-black">
@@ -69,4 +93,6 @@ export function EarthGlobe() {
             />
         </div>
     );
-}
+});
+
+EarthGlobe.displayName = "EarthGlobe";

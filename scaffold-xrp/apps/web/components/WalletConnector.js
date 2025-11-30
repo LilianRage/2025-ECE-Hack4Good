@@ -72,7 +72,7 @@ export function WalletConnector() {
         "--xc-modal-box-shadow": "0 10px 40px rgba(0, 0, 0, 0.5)",
         "--xc-button-background-color": "rgba(0, 0, 0, 0.3)", // Transparent black
         "--xc-button-hover-background-color": "rgba(0, 0, 0, 0.5)",
-        "backdrop-filter": "blur(8px)", // Try to apply blur if supported by the web component host
+        "backdropFilter": "blur(8px)", // Try to apply blur if supported by the web component host
       }}
       primary-wallet="xaman"
     />

@@ -13,8 +13,13 @@ const GlobeViewer = () => {
     const [isLocking, setIsLocking] = useState(false);
 
     // Date States
-    // Default to current hour for filter
-    const [filterDate, setFilterDate] = useState(new Date().toISOString().slice(0, 13) + ':00');
+    // Date States
+    // Default to current local time for filter (YYYY-MM-DDTHH:mm)
+    const [filterDate, setFilterDate] = useState(() => {
+        const now = new Date();
+        now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+        return now.toISOString().slice(0, 16);
+    });
     // Default to current time for purchase
     const [purchaseDate, setPurchaseDate] = useState(new Date().toISOString().slice(0, 16));
 
@@ -29,7 +34,15 @@ const GlobeViewer = () => {
             maxLon: 180,
             maxLat: 90
         };
-        const tiles = await fetchTiles(bbox, filterDate);
+
+        // Convert local filterDate to UTC ISO string for API
+        let utcFilterDate = null;
+        if (filterDate) {
+            const localDate = new Date(filterDate);
+            utcFilterDate = localDate.toISOString();
+        }
+
+        const tiles = await fetchTiles(bbox, utcFilterDate);
         const newLockedTiles = new Map();
         tiles.forEach(tile => {
             newLockedTiles.set(tile._id, tile);
@@ -265,17 +278,77 @@ const GlobeViewer = () => {
             if (Cesium.defined(pickedObject) && typeof pickedObject.id === 'string') {
                 console.log('Clicked H3 Hexagon ID:', pickedObject.id);
                 setSelectedH3Index(pickedObject.id);
+
+                // Send message to parent
+                window.parent.postMessage({
+                    type: 'TILE_SELECTED',
+                    h3Index: pickedObject.id
+                }, '*');
             } else {
                 setSelectedH3Index(null);
+                window.parent.postMessage({
+                    type: 'TILE_SELECTED',
+                    h3Index: null
+                }, '*');
             }
         }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+
+        // Listen for Refresh Tiles
+        const handleRefresh = (event) => {
+            if (event.data && event.data.type === 'REFRESH_TILES') {
+                console.log("Refreshing tiles...");
+                loadTiles();
+            }
+            if (event.data && event.data.type === 'PURCHASE_SUCCESS') {
+                const h3Index = event.data.h3Index;
+                console.log("Animating purchase success for:", h3Index);
+
+                const viewer = viewerRef.current;
+                if (!viewer) return;
+
+                // Create a pulsing effect
+                const boundary = h3.cellToBoundary(h3Index);
+                const positions = [];
+                boundary.forEach(([lat, lon]) => positions.push(lon, lat));
+
+                const entity = viewer.entities.add({
+                    polygon: {
+                        hierarchy: new Cesium.PolygonHierarchy(
+                            Cesium.Cartesian3.fromDegreesArray(positions)
+                        ),
+                        material: new Cesium.ColorMaterialProperty(
+                            new Cesium.CallbackProperty((time) => {
+                                const alpha = (Math.sin(time.secondsOfDay * 5) + 1) / 2 * 0.6 + 0.2;
+                                return Cesium.Color.CYAN.withAlpha(alpha);
+                            }, false)
+                        ),
+                        height: 500,
+                        outline: true,
+                        outlineColor: Cesium.Color.WHITE,
+                        outlineWidth: 2
+                    }
+                });
+
+                // Remove after 3 seconds
+                setTimeout(() => {
+                    if (viewer && !viewer.isDestroyed()) {
+                        viewer.entities.remove(entity);
+                    }
+                }, 3000);
+
+                // Also reload tiles to show new status
+                loadTiles();
+            }
+        };
+        window.addEventListener('message', handleRefresh);
 
         // Cleanup
         return () => {
             handler.destroy();
             viewer.destroy();
+            window.removeEventListener('message', handleRefresh);
         };
-    }, [lockedTiles]); // Re-render when lockedTiles changes
+    }, [lockedTiles, loadTiles]); // Re-render when lockedTiles changes
 
     // Highlight Selected Tile
     const highlightPrimitiveRef = useRef(null);
@@ -329,132 +402,6 @@ const GlobeViewer = () => {
         }
     }, [selectedH3Index]);
 
-    const [walletAddress, setWalletAddress] = useState('');
-
-    // Listen for wallet updates from parent (iframe container)
-    useEffect(() => {
-        const handleMessage = (event) => {
-            // Verify origin for security (optional but recommended)
-            // if (event.origin !== "http://localhost:3000") return;
-
-            if (event.data && event.data.type === 'WALLET_UPDATE') {
-                console.log("Received wallet address:", event.data.address);
-                setWalletAddress(event.data.address);
-            }
-        };
-
-        window.addEventListener('message', handleMessage);
-        return () => window.removeEventListener('message', handleMessage);
-    }, []);
-
-    const handleBuyTile = async () => {
-        if (!selectedH3Index) return;
-        if (!walletAddress.trim()) {
-            alert('Please connect your wallet first (or enter address)');
-            return;
-        }
-
-        setIsLocking(true);
-        try {
-            // 1. Lock the tile
-            console.log('Locking tile...');
-            const lockResponse = await lockTile(selectedH3Index, walletAddress, purchaseDate);
-            const { imageHash } = lockResponse;
-            console.log('Received Image Hash:', imageHash);
-
-            // 2. Prepare Transaction
-            const amountDrops = "10000000"; // 10 XRP
-            const destination = "rP3oLJYmRLujC2EAjBXLPe2MCyBsKHaPSY"; // Merchant Wallet
-            // Memo 1: H3 Index
-            const memoDataH3 = Array.from(new TextEncoder().encode(selectedH3Index))
-                .map(b => b.toString(16).padStart(2, '0'))
-                .join('')
-                .toUpperCase();
-
-            // Memo 2: Image Hash (Already Hex)
-            const memoDataHash = imageHash.toUpperCase();
-
-            const transaction = {
-                TransactionType: 'Payment',
-                Destination: destination,
-                Amount: amountDrops,
-                Memos: [
-                    {
-                        Memo: {
-                            MemoData: memoDataH3,
-                            MemoType: "6833496E646578", // "h3Index" in hex
-                            MemoFormat: "746578742F706C61696E" // "text/plain" in hex
-                        }
-                    },
-                    {
-                        Memo: {
-                            MemoData: memoDataHash,
-                            MemoType: "496D61676548617368", // "ImageHash" in hex
-                            MemoFormat: "746578742F706C61696E" // "text/plain" in hex
-                        }
-                    }
-                ]
-            };
-
-            // 3. Sign with Wallet (via Parent)
-            console.log('Requesting signature from parent...', transaction);
-
-            // Create a promise to wait for the response
-            const signPromise = new Promise((resolve, reject) => {
-                const handleSignResponse = (event) => {
-                    // if (event.origin !== "http://localhost:3000") return; // Optional check
-
-                    if (event.data?.type === 'SIGN_TRANSACTION_RESULT') {
-                        window.removeEventListener('message', handleSignResponse);
-                        resolve(event.data.result);
-                    } else if (event.data?.type === 'SIGN_TRANSACTION_ERROR') {
-                        window.removeEventListener('message', handleSignResponse);
-                        reject(new Error(event.data.error));
-                    }
-                };
-                window.addEventListener('message', handleSignResponse);
-
-                // Send request to parent
-                window.parent.postMessage(
-                    { type: 'SIGN_TRANSACTION', transaction },
-                    '*' // Target origin (ideally http://localhost:3000)
-                );
-
-                // Timeout safety
-                setTimeout(() => {
-                    window.removeEventListener('message', handleSignResponse);
-                    reject(new Error('Signing timed out'));
-                }, 60000); // 1 minute timeout
-            });
-
-            const response = await signPromise;
-            console.log('Wallet Response:', response);
-
-            // Handle different response formats
-            const txHash = response?.result?.hash || response?.response?.hash || response?.hash;
-
-            if (!txHash) {
-                throw new Error('Transaction failed or rejected');
-            }
-
-            console.log('Transaction sent! Hash:', txHash);
-
-            // 4. Confirm with Backend
-            console.log('Confirming purchase...');
-            await confirmTile(selectedH3Index, txHash, walletAddress);
-
-            // Refresh tiles
-            await loadTiles();
-            alert(`Tile ${selectedH3Index} purchased successfully!`);
-
-        } catch (error) {
-            console.error(error);
-            alert(`Failed to buy tile: ${error.message}`);
-        } finally {
-            setIsLocking(false);
-        }
-    };
-
     return (
         <div style={{ position: 'relative', width: '100%', height: '100vh' }}>
             <div
@@ -495,140 +442,6 @@ const GlobeViewer = () => {
                     }}
                 />
             </div>
-
-            {selectedH3Index && (
-                <div style={{
-                    position: 'absolute',
-                    top: '20px',
-                    left: '20px',
-                    padding: '20px',
-                    background: 'rgba(0, 0, 0, 0.8)',
-                    color: 'white',
-                    borderRadius: '12px',
-                    backdropFilter: 'blur(10px)',
-                    border: '1px solid rgba(255, 255, 255, 0.2)',
-                    fontFamily: 'Inter, sans-serif',
-                    zIndex: 1000,
-                    minWidth: '200px',
-                    boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
-                }}>
-                    <h3 style={{ margin: '0 0 10px 0', fontSize: '18px', fontWeight: '600' }}>Tile Selected</h3>
-                    <div style={{ marginBottom: '15px', fontSize: '14px', opacity: 0.8 }}>
-                        ID: <span style={{ fontFamily: 'monospace' }}>{selectedH3Index}</span>
-                    </div>
-
-                    {lockedTiles.has(selectedH3Index) ? (
-                        <div style={{
-                            padding: '12px',
-                            background: 'rgba(255, 50, 50, 0.1)',
-                            border: '1px solid rgba(255, 50, 50, 0.3)',
-                            borderRadius: '8px',
-                            textAlign: 'left',
-                            color: '#eee'
-                        }}>
-                            <div style={{ fontWeight: 'bold', color: lockedTiles.get(selectedH3Index).status === 'OWNED' ? '#4ade80' : '#ff6b6b', marginBottom: '8px' }}>
-                                {lockedTiles.get(selectedH3Index).status === 'OWNED' ? '👑 Owned' : '🔒 Locked'}
-                            </div>
-
-                            <div style={{ fontSize: '11px', marginBottom: '4px', color: '#ccc' }}>
-                                👤 <span style={{ fontFamily: 'monospace' }}>{lockedTiles.get(selectedH3Index).owner.address}</span>
-                            </div>
-                            <div style={{ fontSize: '11px', marginBottom: '8px', color: '#ccc' }}>
-                                📅 {new Date(lockedTiles.get(selectedH3Index).gameDate).toLocaleString()}
-                            </div>
-
-                            {lockedTiles.get(selectedH3Index).status === 'OWNED' && lockedTiles.get(selectedH3Index).metadata && (
-                                <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
-                                    {lockedTiles.get(selectedH3Index).metadata.imageUrl && (
-                                        <img
-                                            src={lockedTiles.get(selectedH3Index).metadata.imageUrl}
-                                            alt="Satellite View"
-                                            style={{ width: '100%', maxHeight: '150px', objectFit: 'cover', borderRadius: '4px', marginBottom: '8px' }}
-                                        />
-                                    )}
-                                    <div style={{ fontSize: '10px', wordBreak: 'break-all', marginBottom: '4px' }}>
-                                        <strong>TX Hash:</strong><br />
-                                        <a
-                                            href={`https://testnet.xrpl.org/transactions/${lockedTiles.get(selectedH3Index).metadata.txHash}`}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            style={{ color: '#60a5fa', textDecoration: 'none' }}
-                                        >
-                                            {lockedTiles.get(selectedH3Index).metadata.txHash}
-                                        </a>
-                                    </div>
-                                    {lockedTiles.get(selectedH3Index).metadata.imageHash && (
-                                        <div style={{ fontSize: '10px', wordBreak: 'break-all' }}>
-                                            <strong>Img Hash:</strong><br />
-                                            <span style={{ fontFamily: 'monospace', color: '#aaa' }}>
-                                                {lockedTiles.get(selectedH3Index).metadata.imageHash}
-                                            </span>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-                    ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                            <div>
-                                <label style={{ display: 'block', marginBottom: '5px', fontSize: '12px', opacity: 0.8 }}>
-                                    Game Date & Time
-                                </label>
-                                <input
-                                    type="datetime-local"
-                                    value={purchaseDate}
-                                    onChange={(e) => setPurchaseDate(e.target.value)}
-                                    style={{
-                                        width: '100%',
-                                        padding: '8px',
-                                        borderRadius: '6px',
-                                        border: '1px solid #555',
-                                        background: 'rgba(255,255,255,0.1)',
-                                        color: 'white',
-                                        outline: 'none',
-                                        marginBottom: '10px',
-                                        boxSizing: 'border-box'
-                                    }}
-                                />
-                            </div>
-                            <input
-                                type="text"
-                                placeholder="Enter Wallet Address"
-                                value={walletAddress}
-                                onChange={(e) => setWalletAddress(e.target.value)}
-                                disabled={!!walletAddress} // Disable if auto-filled
-                                style={{
-                                    padding: '8px',
-                                    borderRadius: '6px',
-                                    border: '1px solid #555',
-                                    background: 'rgba(255,255,255,0.1)',
-                                    color: 'white',
-                                    outline: 'none',
-                                    cursor: walletAddress ? 'not-allowed' : 'text',
-                                    opacity: walletAddress ? 0.7 : 1
-                                }}
-                            />
-                            <button
-                                onClick={handleBuyTile}
-                                disabled={isLocking}
-                                style={{
-                                    width: '100%',
-                                    padding: '10px',
-                                    background: isLocking ? '#555' : 'linear-gradient(135deg, #6366f1 0%, #a855f7 100%)',
-                                    border: 'none',
-                                    borderRadius: '6px',
-                                    color: 'white',
-                                    fontWeight: '600',
-                                    cursor: isLocking ? 'not-allowed' : 'pointer',
-                                    transition: 'transform 0.1s',
-                                }}
-                            >
-                                {isLocking ? 'Processing...' : 'Buy Tile (10 XRP)'}
-                            </button>
-                        </div>
-                    )}
-                </div>
-            )}
         </div>
     );
 };

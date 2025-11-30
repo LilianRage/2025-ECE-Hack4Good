@@ -5,10 +5,14 @@ import fs from 'fs';
 import path from 'path';
 import Tile from '../models/tile.model';
 import { verifyTransaction } from '../services/xrpl.service';
+import { Client, Wallet, convertStringToHex } from 'xrpl';
 
 // Merchant Wallet Address (Should be in env)
-const MERCHANT_WALLET = process.env.MERCHANT_WALLET || 'rP3oLJYmRLujC2EAjBXLPe2MCyBsKHaPSY';
-const TILE_PRICE_DROPS = '10000000'; // 10 XRP
+const MERCHANT_WALLET = process.env.MERCHANT_WALLET || 'rKfLLRRRNw12Yo5Ysrx6LsVn3BpRGZNX1v';
+// TESTNET SEED - For demo purposes only. In production, use secure env var.
+const MERCHANT_SEED = process.env.MERCHANT_SEED || 'sEdSjbWAYaByvWkn7wxv8gLNhsopDdk';
+const TILE_PRICE_DROPS = '100000'; // 0.1 XRP
+const XRPL_NET = 'wss://s.altnet.rippletest.net:51233';
 
 export const lockTile = async (req: Request, res: Response) => {
     const { h3Index, userWallet, gameDate } = req.body;
@@ -22,20 +26,6 @@ export const lockTile = async (req: Request, res: Response) => {
 
     try {
         // Check if tile exists and is not expired
-        // Note: With gameDate, uniqueness might need to be scoped by date if we allow multiple owners for different times.
-        // For now, assuming 1 tile = 1 owner regardless of time, OR we should check if tile exists at this specific time.
-        // User request: "afficher les tuiles acheté à une heure précise". 
-        // This implies we can have the same tile purchased at different times? 
-        // Or just that we filter the VIEW. 
-        // Let's assume for now that a tile is unique per (h3Index, gameDate).
-        // BUT the current schema has _id = h3Index, which enforces uniqueness globally.
-        // If we want multiple dates, we need to change _id or use a composite index.
-        // Given the constraint of the current task and previous setup, I will assume for now that 
-        // we are just adding metadata to the unique tile. 
-        // WAIT, if I want to buy a tile "at a specific hour", it usually means I'm buying a slot.
-        // If I just tag a date to a permanent purchase, that's easier.
-        // Let's stick to: One tile, one owner, but it has a "Game Date" property.
-
         const existingTile = await Tile.findById(h3Index);
         if (existingTile) {
             // If it's already OWNED or PAID, reject
@@ -48,22 +38,33 @@ export const lockTile = async (req: Request, res: Response) => {
             return res.status(409).json({ error: 'Tile is currently locked or owned.' });
         }
 
-        // --- SIMULATION: Local Asset Image ---
-        // 1. Read local file
-        const imagePath = path.join(__dirname, '../assets/desert.jpeg');
+        // --- SIMULATION: Local Asset Image with Cycling ---
+        // 1. Get all images from assets
+        const assetsDir = path.join(__dirname, '../assets');
+        const files = fs.readdirSync(assetsDir).filter(f => /\.(jpg|jpeg|png|gif)$/i.test(f));
+
+        if (files.length === 0) {
+            throw new Error('No images found in assets directory');
+        }
+
+        // 2. Determine which image to use based on total tiles count
+        const totalTiles = await Tile.countDocuments();
+        const imageIndex = totalTiles % files.length;
+        const selectedImage = files[imageIndex];
+
+        // 3. Read file
+        const imagePath = path.join(assetsDir, selectedImage);
         const imageBuffer = fs.readFileSync(imagePath);
 
-        // 2. Hash the image content
+        // 4. Hash the image content
         const imageHash = crypto.createHash('sha256').update(imageBuffer).digest('hex');
 
-        // 3. Construct URL (assuming server is reachable at same host/port for now)
-        // In production, this should be a full URL or relative if proxied.
-        // Using localhost for dev simulation as requested.
+        // 5. Construct URL
         const protocol = req.protocol;
         const host = req.get('host');
-        const imageUrl = `${protocol}://${host}/assets/desert.jpeg`;
+        const imageUrl = `${protocol}://${host}/assets/${selectedImage}`;
 
-        console.log(`Using Local Image: ${imageUrl}`);
+        console.log(`Using Local Image: ${imageUrl} (Index: ${imageIndex})`);
         console.log(`Image Hash: ${imageHash}`);
         // --------------------------------------------
 
@@ -128,6 +129,11 @@ export const confirmTile = async (req: Request, res: Response) => {
         };
         await tile.save();
 
+        // MINT NFT (Async, fire and forget for response speed)
+        mintTileNFT(tile._id, tile.metadata.imageHash, userWallet).catch(err => {
+            console.error('Failed to mint NFT for tile', tile._id, err);
+        });
+
         return res.status(200).json({ success: true, tile });
 
     } catch (error) {
@@ -155,19 +161,20 @@ export const getTilesInView = async (req: Request, res: Response) => {
         status: { $in: ['LOCKED', 'OWNED', 'PAID'] }
     };
 
-    // Filter by Date (Hour precision)
+    // Filter by Date (Active Duration: 1 Hour)
+    // We want tiles that are ACTIVE at 'filterDate'.
+    // A tile is active if: gameDate <= filterDate AND gameDate > (filterDate - 1 hour)
+    // So we query for: gameDate > (filterDate - 1 hour) AND gameDate <= filterDate
     if (filterDate) {
-        const date = new Date(filterDate as string);
-        // Start of hour
-        const start = new Date(date);
-        start.setMinutes(0, 0, 0);
-        // End of hour
-        const end = new Date(start);
-        end.setHours(end.getHours() + 1);
+        const viewDate = new Date(filterDate as string);
+
+        // Calculate the start of the active window (1 hour ago relative to viewDate)
+        const activeWindowStart = new Date(viewDate);
+        activeWindowStart.setHours(activeWindowStart.getHours() - 1);
 
         query.gameDate = {
-            $gte: start,
-            $lt: end
+            $gt: activeWindowStart,
+            $lte: viewDate
         };
     }
 
@@ -182,3 +189,168 @@ export const getTilesInView = async (req: Request, res: Response) => {
         return res.status(500).json({ error: 'Internal server error' });
     }
 };
+
+export const getUserTiles = async (req: Request, res: Response) => {
+    const { address } = req.params;
+
+    if (!address) {
+        return res.status(400).json({ error: 'Missing wallet address' });
+    }
+
+    try {
+        const tiles = await Tile.find({ 'owner.address': address })
+            .sort({ gameDate: -1 }) // Sort by gameDate descending (newest first)
+            .select('_id status owner.address metadata.ipfsImage metadata.txHash metadata.imageUrl metadata.imageHash metadata.pricePaid metadata.nftOfferId metadata.nftId gameDate')
+            .lean();
+
+        return res.status(200).json(tiles);
+    } catch (error) {
+        console.error('Error getting user tiles:', error);
+        return res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const getNftMetadata = async (req: Request, res: Response) => {
+    const { h3Index } = req.params;
+
+    try {
+        const tile = await Tile.findById(h3Index);
+        if (!tile) {
+            return res.status(404).json({ error: 'Tile not found' });
+        }
+
+        const metadata = {
+            name: `Tile ${h3Index} - ${new Date(tile.gameDate).toLocaleDateString()}`,
+            description: `Tile ${h3Index} purchased on ${new Date(tile.gameDate).toISOString()} for ${parseInt(tile.metadata.pricePaid || '0') / 1000000} XRP`,
+            image: tile.metadata.imageUrl,
+            attributes: [
+                { trait_type: "Price Paid", value: `${parseInt(tile.metadata.pricePaid || '0') / 1000000} XRP` },
+                { trait_type: "Purchase Date", value: new Date(tile.gameDate).toISOString() },
+                { trait_type: "Tile ID", value: h3Index },
+                { trait_type: "Image Hash", value: tile.metadata.imageHash }
+            ]
+        };
+
+        return res.status(200).json(metadata);
+    } catch (error) {
+        console.error('Error fetching metadata:', error);
+        return res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const getAccountNfts = async (req: Request, res: Response) => {
+    const { address } = req.params;
+    const client = new Client(XRPL_NET);
+
+    try {
+        await client.connect();
+        const response = await client.request({
+            command: "account_nfts",
+            account: address,
+            ledger_index: "validated"
+        });
+
+        await client.disconnect();
+        return res.status(200).json(response.result.account_nfts);
+    } catch (error) {
+        console.error('Error fetching account NFTs:', error);
+        if (client.isConnected()) {
+            await client.disconnect();
+        }
+        return res.status(500).json({ error: 'Failed to fetch NFTs' });
+    }
+};
+
+async function mintTileNFT(tileId: string, imageHash: string, ownerAddress: string) {
+    console.log(`Starting NFT Minting for Tile ${tileId}...`);
+    const client = new Client(XRPL_NET);
+    await client.connect();
+
+    try {
+        // Wallet du Marchand (Issuer)
+        const merchantWallet = Wallet.fromSeed(MERCHANT_SEED);
+
+        // 1. Préparer les métadonnées (URI)
+        // Point to our own API metadata endpoint
+        // In production, use the real domain. For local, we assume localhost:3001 or similar.
+        // Since we don't have the request object here, we'll hardcode the base URL or use an env var.
+        const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:3001/api';
+        const metadataUrl = `${API_BASE_URL}/metadata/${tileId}`;
+        const uri = convertStringToHex(metadataUrl);
+
+        // 2. Transaction NFTokenMint
+        const transactionBlob: any = {
+            TransactionType: "NFTokenMint",
+            Account: merchantWallet.classicAddress,
+            URI: uri,
+            Flags: 8, // tfTransferable
+            NFTokenTaxon: 0,
+        };
+
+        const tx = await client.submitAndWait(transactionBlob, { wallet: merchantWallet });
+        console.log("NFT Minted:", tx.result?.hash);
+
+        // Parse metadata to find NFTokenID
+        const nfts = await client.request({
+            command: "account_nfts",
+            account: merchantWallet.classicAddress
+        });
+
+        // Find the NFT with our URI
+        // Note: account_nfts might return many NFTs. We should filter carefully.
+        // Since we just minted it, it should be there.
+        const mintedNFT = nfts.result.account_nfts.find((n: any) => n.URI === uri);
+
+        if (mintedNFT) {
+            console.log("Found Minted NFT ID:", mintedNFT.NFTokenID);
+
+            // 3. Create Sell Offer (Transfer to User)
+            const offerBlob: any = {
+                TransactionType: "NFTokenCreateOffer",
+                Account: merchantWallet.classicAddress,
+                NFTokenID: mintedNFT.NFTokenID,
+                Amount: "0", // Free transfer
+                Destination: ownerAddress, // Only this user can claim it
+                Flags: 1 // tfSellNFToken
+            };
+
+            const offerTx = await client.submitAndWait(offerBlob, { wallet: merchantWallet });
+            console.log("NFT Offer Created:", offerTx.result?.hash);
+
+            // Extract Offer ID from transaction metadata
+            // The Offer ID is the 'LedgerIndex' of the 'NFTokenOffer' node created.
+            // Parsing this from tx metadata is complex. 
+            // EASIER WAY: Query account_nfts or account_offers again? No.
+            // Actually, for NFTokenCreateOffer, the Offer ID is NOT in the top-level result.
+            // It is in the metadata. 
+            // Let's assume for now we can fetch it or just use the transaction hash to find it?
+            // Wait, to accept the offer, we need the Offer ID (Index).
+            // Let's try to parse it from metadata if possible, or fetch offers for the account.
+
+            // Fetch offers for the merchant to find the one we just created
+            const offers = await client.request({
+                command: "nft_sell_offers",
+                nft_id: mintedNFT.NFTokenID
+            });
+
+            const myOffer = offers.result.offers.find((o: any) => o.destination === ownerAddress);
+
+            if (myOffer) {
+                console.log("Found Offer ID:", myOffer.nft_offer_index);
+                // Update Tile with Offer ID
+                await Tile.findByIdAndUpdate(tileId, {
+                    'metadata.nftOfferId': myOffer.nft_offer_index,
+                    'metadata.nftId': mintedNFT.NFTokenID
+                });
+            }
+
+        } else {
+            console.error("Could not find minted NFT ID");
+        }
+
+    } catch (error) {
+        console.error("NFT Minting Error:", error);
+    } finally {
+        await client.disconnect();
+    }
+}

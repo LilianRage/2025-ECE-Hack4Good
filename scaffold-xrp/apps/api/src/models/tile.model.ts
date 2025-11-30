@@ -53,7 +53,8 @@ const TileSchema = new mongoose.Schema({
         ipfsImage: String,      // URL de l'image satellite finale
         satelliteProvider: String, // "Planet", "Maxar"
         imageUrl: String,       // Simulated Image URL
-        imageHash: String       // Simulated Image Hash
+        imageHash: String,      // Simulated Image Hash
+        nftOfferId: String      // ID of the Sell Offer for the user
     }
 }, { timestamps: true });
 
