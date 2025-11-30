@@ -1,50 +1,72 @@
-# Earth Metaverse - Hack4Good
+# Scaffold-XRP Technical Documentation
 
-This project is a decentralized application built on the XRP Ledger. It allows users to explore a 3D Earth, select hexagonal zones (tiles), and purchase them using XRP.
+This directory contains the source code for the frontend application. It is built using **Next.js 14** and interacts directly with the **XRP Ledger**.
 
-## Project Overview
+## Tech Stack
 
-The goal is to create a transparent and interactive way to own digital land. Users can navigate the globe, check the status of different zones, and participate in community missions like the "Sahara Conflict".
+- **Framework**: Next.js 14 (App Router)
+- **Styling**: Tailwind CSS
+- **Blockchain SDK**: `xrpl.js`
+- **Package Manager**: pnpm (via Turborepo)
 
-## How It Works (The Technique)
+## Architecture
 
-We use a straightforward technical approach to handle ownership and payments on the XRPL:
+The application is structured as a monorepo. The main frontend logic resides in `apps/web`.
 
-1. **Tile System**: The world is divided into hexagonal tiles using the H3 indexing system. Each tile has a unique ID.
+### Key Components
 
-2. **Purchase Mechanisms**:
-   - **Instant Buy**: A standard XRP Payment transaction is sent to the merchant wallet.
-   - **Future/Escrow**: For scheduled releases, we use the XRPL `EscrowCreate` transaction. This locks the XRP on the ledger until a specific date, ensuring the funds are safe and the purchase is guaranteed to execute only when the time comes.
+- **`components/DashboardPanel.js`**: This is the heart of the application. It handles:
+  - State management for selected tiles.
+  - Interaction with the 3D Globe (via props/callbacks).
+  - Transaction construction and submission.
+  - UI for "My Lands", "Collaboration", and "Buy Zone".
 
-3. **NFT Integration**:
-   - Every tile is represented as an NFT.
-   - When a purchase is confirmed, the backend mints an NFT and creates a sell offer for the buyer.
-   - The buyer then signs an `NFTokenAcceptOffer` transaction to claim the NFT, transferring full ownership to their wallet.
+- **`components/providers/WalletProvider.js`**: Manages wallet connections (GemWallet, Xaman, Crossmark) and exposes the `walletManager` to the rest of the app.
 
-4. **Verification**: The system listens for transactions on the ledger to update the tile status in real-time, ensuring the map is always in sync with the blockchain.
+## XRPL Integration Details
 
-## Getting Started
+We use specific transaction types and patterns to implement the game logic on-chain.
 
-### Prerequisites
-- Node.js 18+
-- pnpm
+### 1. Tile Purchase Flow
 
-### Installation
+When a user buys a tile, the following happens:
+
+1.  **Locking**: The frontend calls the backend API `lockTile` to reserve the zone and generate a unique image hash.
+2.  **Transaction Construction**:
+    - **Instant Purchase**: Uses a standard `Payment` transaction.
+    - **Future Purchase**: Uses an `EscrowCreate` transaction.
+        - `FinishAfter`: Set to the release date (converted to Ripple Epoch).
+        - `Condition`: (Optional) If cryptographic conditions were needed, but here we rely on time.
+3.  **Memos**: Critical data is attached to the transaction via Memos:
+    - `h3Index`: The hexagonal grid ID of the tile.
+    - `ImageHash`: The hash of the generated tile image.
+    - `GameDate`: The ISO date string for the game logic.
+4.  **Confirmation**: After signing, the transaction hash is sent to the backend (`confirmTile`) to finalize the database record.
+
+### 2. NFT Claiming (Mint & Sell)
+
+Tiles are represented as NFTs. The flow is "Mint-and-Sell" to ensure the user gets the token:
+
+1.  **Backend Minting**: The backend mints the NFT on the **Issuer Account**.
+2.  **Sell Offer**: The backend creates an `NFTokenCreateOffer` (Sell Offer) destined for the user's wallet address.
+3.  **Frontend Acceptance**:
+    - The frontend detects the `nftOfferId` in the tile metadata.
+    - The user clicks "Claim NFT".
+    - The frontend submits an `NFTokenAcceptOffer` transaction.
+    - **Result**: The NFT is transferred from the Issuer to the User.
+
+## Setup & Development
 
 ```bash
+# Install dependencies
 pnpm install
-```
 
-### Running the App
-
-```bash
+# Run development server
 pnpm dev
 ```
 
-The application will start at `http://localhost:3000`.
+The app runs on `http://localhost:3000`.
 
-## Technologies
+## Environment Variables
 
-- **Frontend**: Next.js, Tailwind CSS
-- **Blockchain**: XRPL (xrpl.js)
-- **Wallets**: Support for GemWallet, Xaman, and Crossmark
+Ensure you have a `.env.local` in `apps/web` with necessary API endpoints if running against a custom backend.
