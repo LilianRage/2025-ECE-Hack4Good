@@ -54,7 +54,10 @@ const TileSchema = new mongoose.Schema({
         satelliteProvider: String, // "Planet", "Maxar"
         imageUrl: String,       // Simulated Image URL
         imageHash: String,      // Simulated Image Hash
-        nftOfferId: String      // ID of the Sell Offer for the user
+        nftOfferId: String,     // ID of the Sell Offer for the user
+        escrowSequence: Number, // Sequence of the EscrowCreate transaction
+        escrowOwner: String,    // Owner of the Escrow (User)
+        finishAfter: Number     // Ripple Epoch time when Escrow expires
     }
 }, { timestamps: true });
 

@@ -75,3 +75,64 @@ export const verifyTransaction = async (txHash: string, expectedAmountDrops: str
         return false;
     }
 };
+
+export const verifyEscrowTransaction = async (txHash: string, expectedAmountDrops: string, expectedDestination: string, expectedMemoData: string): Promise<{ isValid: boolean, sequence?: number, owner?: string, finishAfter?: number }> => {
+    try {
+        const client = await getXrplClient();
+        const tx = await client.request({
+            command: 'tx',
+            transaction: txHash
+        });
+
+        if (!tx.result || !tx.result.validated) {
+            console.error('Transaction not validated yet or not found');
+            return { isValid: false };
+        }
+
+        // Check if it is an EscrowCreate transaction
+        if (tx.result.TransactionType !== 'EscrowCreate') {
+            console.error('Transaction is not an EscrowCreate');
+            return { isValid: false };
+        }
+
+        // Cast to any to access specific fields (EscrowCreate)
+        const escrow = tx.result as any;
+
+        // 1. Verify Destination
+        if (escrow.Destination !== expectedDestination) {
+            console.error('Wrong destination:', escrow.Destination);
+            return { isValid: false };
+        }
+
+        // 2. Verify Amount
+        if (typeof escrow.Amount !== 'string' || escrow.Amount !== expectedAmountDrops) {
+            console.error('Wrong amount:', escrow.Amount);
+            return { isValid: false };
+        }
+
+        // 3. Verify Memo (The H3 Index)
+        const memos = escrow.Memos;
+        if (!memos || memos.length === 0) {
+            console.error('No memos found');
+            return { isValid: false };
+        }
+
+        const foundMemo = memos.find((m: any) => m.Memo.MemoData === expectedMemoData);
+        if (!foundMemo) {
+            console.error('Memo mismatch. Expected:', expectedMemoData);
+            return { isValid: false };
+        }
+
+        // Return Sequence and Account (Owner) for EscrowFinish
+        return {
+            isValid: true,
+            sequence: escrow.Sequence,
+            owner: escrow.Account,
+            finishAfter: escrow.FinishAfter
+        };
+
+    } catch (error) {
+        console.error('Error verifying escrow transaction:', error);
+        return { isValid: false };
+    }
+};

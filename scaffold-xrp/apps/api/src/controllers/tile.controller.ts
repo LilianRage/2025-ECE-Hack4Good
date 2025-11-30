@@ -4,7 +4,7 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import Tile from '../models/tile.model';
-import { verifyTransaction } from '../services/xrpl.service';
+import { verifyTransaction, verifyEscrowTransaction } from '../services/xrpl.service';
 import { Client, Wallet, convertStringToHex } from 'xrpl';
 
 // Merchant Wallet Address (Should be in env)
@@ -114,32 +114,135 @@ export const confirmTile = async (req: Request, res: Response) => {
         // Memo data should be the h3Index in Hex
         const expectedMemo = Buffer.from(h3Index).toString('hex').toUpperCase();
 
-        const isValid = await verifyTransaction(txHash, TILE_PRICE_DROPS, MERCHANT_WALLET, expectedMemo);
+        // Check if it's an Escrow Transaction first
+        // We need to fetch the tx to know the type, or try verifyEscrowTransaction first?
+        // Let's try verifyTransaction (Payment) first, if it fails, try Escrow.
+        // OR, we can just fetch the tx here and decide.
+        // But our helpers fetch the tx too.
+        // Let's try verifyTransaction first (most common).
 
-        if (!isValid) {
-            return res.status(400).json({ error: 'Invalid transaction' });
+        let isPayment = await verifyTransaction(txHash, TILE_PRICE_DROPS, MERCHANT_WALLET, expectedMemo);
+
+        if (isPayment) {
+            // STANDARD PAYMENT
+            tile.status = 'OWNED';
+            tile.metadata = {
+                ...tile.metadata,
+                txHash: txHash,
+                pricePaid: TILE_PRICE_DROPS
+            };
+            await tile.save();
+
+            // MINT NFT
+            mintTileNFT(tile._id, tile.metadata.imageHash, userWallet).catch(err => {
+                console.error('Failed to mint NFT for tile', tile._id, err);
+            });
+
+            return res.status(200).json({ success: true, tile });
         }
 
-        // Update Tile
-        tile.status = 'OWNED';
-        tile.metadata = {
-            ...tile.metadata,
-            txHash: txHash,
-            pricePaid: TILE_PRICE_DROPS
-        };
-        await tile.save();
+        // Try Escrow
+        const { isValid, sequence, owner, finishAfter } = await verifyEscrowTransaction(txHash, TILE_PRICE_DROPS, MERCHANT_WALLET, expectedMemo);
 
-        // MINT NFT (Async, fire and forget for response speed)
-        mintTileNFT(tile._id, tile.metadata.imageHash, userWallet).catch(err => {
-            console.error('Failed to mint NFT for tile', tile._id, err);
-        });
+        if (isValid) {
+            // ESCROW CREATED
+            tile.status = 'LOCKED'; // Keep it LOCKED or use a new status 'ESCROWED'?
+            // Let's use 'ESCROWED' to distinguish.
+            // But we need to update the enum in model? 
+            // Model has: ['LOCKED', 'PAID', 'PROCESSING', 'OWNED']
+            // Let's use 'PROCESSING' for Escrow? Or just 'LOCKED' with metadata?
+            // Let's use 'PROCESSING' as "Pending Completion".
+            tile.status = 'PROCESSING';
 
-        return res.status(200).json({ success: true, tile });
+            tile.metadata = {
+                ...tile.metadata,
+                txHash: txHash,
+                pricePaid: TILE_PRICE_DROPS,
+                escrowSequence: sequence,
+                escrowOwner: owner,
+                finishAfter: finishAfter
+            };
+            await tile.save();
+
+            return res.status(200).json({ success: true, tile, message: "Escrow detected. NFT will be minted upon completion." });
+        }
+
+        return res.status(400).json({ error: 'Invalid transaction (Payment or Escrow)' });
 
     } catch (error) {
         console.error('Error confirming tile:', error);
         return res.status(500).json({ error: 'Internal server error' });
     }
+};
+
+export const checkAndProcessEscrows = async () => {
+    try {
+        const nowRipple = Math.floor((Date.now() - new Date("2000-01-01T00:00:00Z").getTime()) / 1000);
+
+        // Find tiles that are PROCESSING (Escrowed) and ready to finish
+        const tiles = await Tile.find({
+            status: 'PROCESSING',
+            'metadata.finishAfter': { $lte: nowRipple }
+        });
+
+        if (tiles.length > 0) {
+            console.log(`Found ${tiles.length} mature escrows to process.`);
+        }
+
+        const results = [];
+
+        for (const tile of tiles) {
+            try {
+                console.log(`Processing Escrow for Tile ${tile._id}...`);
+                const client = new Client(XRPL_NET);
+                await client.connect();
+
+                const merchantWallet = Wallet.fromSeed(MERCHANT_SEED);
+
+                // Create EscrowFinish Transaction
+                const finishTx: any = {
+                    TransactionType: "EscrowFinish",
+                    Account: merchantWallet.classicAddress,
+                    Owner: tile.metadata.escrowOwner,
+                    OfferSequence: tile.metadata.escrowSequence
+                };
+
+                const result = await client.submitAndWait(finishTx, { wallet: merchantWallet });
+                await client.disconnect();
+
+                if (result.result.meta.TransactionResult === "tesSUCCESS") {
+                    console.log(`Escrow Finished for ${tile._id}`);
+
+                    // Update Tile
+                    tile.status = 'OWNED';
+                    await tile.save();
+
+                    // Mint NFT
+                    await mintTileNFT(tile._id, tile.metadata.imageHash, tile.owner.address);
+
+                    results.push({ id: tile._id, status: "success" });
+                } else {
+                    console.error(`EscrowFinish failed for ${tile._id}:`, result.result.meta.TransactionResult);
+                    results.push({ id: tile._id, status: "failed", error: result.result.meta.TransactionResult });
+                }
+
+            } catch (err: any) {
+                console.error(`Error processing tile ${tile._id}:`, err);
+                results.push({ id: tile._id, status: "error", error: err.message });
+            }
+        }
+
+        return results;
+
+    } catch (error) {
+        console.error("Error processing escrows:", error);
+        return [];
+    }
+};
+
+export const processEscrows = async (req: Request, res: Response) => {
+    const results = await checkAndProcessEscrows();
+    return res.status(200).json({ processed: results.length, results });
 };
 
 export const getTilesInView = async (req: Request, res: Response) => {

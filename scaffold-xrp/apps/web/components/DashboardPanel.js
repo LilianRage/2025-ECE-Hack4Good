@@ -10,6 +10,8 @@ export function DashboardPanel({ selectedTile, onRefreshTiles }) {
     const { accountInfo, walletManager } = useWallet();
     const [isProcessing, setIsProcessing] = useState(false);
 
+    const [purchaseMode, setPurchaseMode] = useState("instant"); // "instant" or "future"
+
     // Initialize with local time formatted for datetime-local input (YYYY-MM-DDTHH:mm)
     const [purchaseDate, setPurchaseDate] = useState(() => {
         const now = new Date();
@@ -19,6 +21,7 @@ export function DashboardPanel({ selectedTile, onRefreshTiles }) {
 
     const [activeTiles, setActiveTiles] = useState([]);
     const [archiveTiles, setArchiveTiles] = useState([]);
+    const [futureTiles, setFutureTiles] = useState([]); // New state for Future/Escrow/Unclaimed
     const [newTileId, setNewTileId] = useState(null); // For animation
     const [selectedOwnedTile, setSelectedOwnedTile] = useState(null); // For details view
     const [ownedNfts, setOwnedNfts] = useState(new Set());
@@ -28,30 +31,6 @@ export function DashboardPanel({ selectedTile, onRefreshTiles }) {
         const fetchOwnedNfts = async () => {
             if (walletManager && accountInfo?.address) {
                 try {
-                    // We need to use the client from walletManager if exposed, or make a request
-                    // Assuming walletManager has a method or we can use the client directly if we had access.
-                    // But walletManager wraps the client.
-                    // Let's assume we can use a direct XRPL client or if walletManager has a 'request' method.
-                    // If not, we might need to add one to WalletManager.js or use a library.
-                    // Wait, we don't have direct access to client here.
-                    // Let's try to use the 'request' method if it exists, or check how signAndSubmit works.
-                    // Actually, for now, let's assume we can't easily check without modifying WalletManager.
-                    // BUT, we can use the 'xrpl' library if we import it, but we are in frontend.
-                    // Let's try to see if walletManager exposes 'client'.
-
-                    // Workaround: If we can't check, we default to showing "Claim" if we just bought it?
-                    // No, that's what we had before.
-
-                    // Let's try to fetch via our API? We don't have an endpoint for "my nfts".
-                    // We should add one or use a public node.
-
-                    // BETTER: Add a method to WalletManager (if I could edit it easily) or just use a public endpoint.
-                    // Actually, let's just try to call 'account_nfts' if walletManager allows.
-                    // If not, we will assume NOT owned if we just bought it.
-
-                    // Let's look at WalletManager.js in the artifacts? No.
-                    // Let's try to use a simple fetch to a public node?
-
                     // Use our own backend proxy to avoid CORS issues
                     const response = await fetch(`http://localhost:3001/api/nfts/${accountInfo.address}`);
 
@@ -83,29 +62,54 @@ export function DashboardPanel({ selectedTile, onRefreshTiles }) {
 
                 const active = [];
                 const archive = [];
+                const future = [];
 
                 tiles.forEach(tile => {
                     const gameDate = new Date(tile.gameDate);
-                    // Active if gameDate > activeWindowStart
-                    if (gameDate > activeWindowStart) {
-                        active.push(tile);
-                    } else {
-                        archive.push(tile);
+
+                    // Check for Escrow (PROCESSING)
+                    if (tile.status === 'PROCESSING') {
+                        future.push(tile);
+                        return;
+                    }
+
+                    // Check for Unclaimed NFT (OWNED but NFT not in wallet)
+                    // We need to be careful: if we haven't fetched NFTs yet, we might wrongly categorize.
+                    // But ownedNfts starts empty. 
+                    // Let's assume if it has nftId but not in ownedNfts, it's unclaimed?
+                    // OR if it has nftOfferId?
+                    // If tile.status is OWNED:
+                    if (tile.status === 'OWNED') {
+                        // If we have an NFT ID and it IS in the wallet -> Active/Archive
+                        if (tile.metadata?.nftId && ownedNfts.has(tile.metadata.nftId)) {
+                            if (gameDate > activeWindowStart) {
+                                active.push(tile);
+                            } else {
+                                archive.push(tile);
+                            }
+                        } else {
+                            // Not in wallet yet (Unclaimed or just minted and not indexed)
+                            // Treat as Future/Unclaimed
+                            future.push(tile);
+                        }
                     }
                 });
 
                 setActiveTiles(active);
                 setArchiveTiles(archive);
+                setFutureTiles(future);
             } else {
                 setActiveTiles([]);
                 setArchiveTiles([]);
+                setFutureTiles([]);
             }
         };
 
+        // Reload when tab changes or ownedNfts updates
         if (activeTab === "ma terre") {
             loadUserTiles();
         }
-    }, [accountInfo, activeTab]);
+    }, [accountInfo, activeTab, ownedNfts]);
 
     // Switch to "acheter une zone" when a tile is selected from map
     useEffect(() => {
@@ -124,9 +128,22 @@ export function DashboardPanel({ selectedTile, onRefreshTiles }) {
 
         setIsProcessing(true);
         try {
+            // Determine Game Date
+            let gameDateIso;
+            if (purchaseMode === "instant") {
+                gameDateIso = new Date().toISOString();
+            } else {
+                const dateObj = new Date(purchaseDate);
+                // Ensure future date for Escrow
+                if (dateObj <= new Date()) {
+                    throw new Error("Pour un achat programmé, la date doit être dans le futur.");
+                }
+                gameDateIso = dateObj.toISOString();
+            }
+
             // 1. Lock the tile
             console.log('Locking tile...', selectedTile);
-            const lockResponse = await lockTile(selectedTile, accountInfo.address, purchaseDate);
+            const lockResponse = await lockTile(selectedTile, accountInfo.address, gameDateIso);
             const { imageHash } = lockResponse;
             console.log('Received Image Hash:', imageHash);
 
@@ -141,40 +158,76 @@ export function DashboardPanel({ selectedTile, onRefreshTiles }) {
                 .toUpperCase();
 
             // Memo 2: Game Date (ISO String)
-            // purchaseDate is "YYYY-MM-DDTHH:mm" (Local)
-            // Create a Date object from it, which uses browser's timezone
-            const dateObj = new Date(purchaseDate);
-            const isoDate = dateObj.toISOString();
-
-            const memoDataDate = Array.from(new TextEncoder().encode(isoDate))
+            const memoDataDate = Array.from(new TextEncoder().encode(gameDateIso))
                 .map(b => b.toString(16).padStart(2, '0'))
                 .join('')
                 .toUpperCase();
 
-            // Memo 2: Image Hash (Already Hex)
+            // Memo 3: Image Hash (Already Hex)
             const memoDataHash = imageHash.toUpperCase();
 
-            const transaction = {
-                TransactionType: 'Payment',
-                Destination: destination,
-                Amount: amountDrops,
-                Memos: [
-                    {
-                        Memo: {
-                            MemoData: memoDataH3,
-                            MemoType: "6833496E646578", // "h3Index" in hex
-                            MemoFormat: "746578742F706C61696E" // "text/plain" in hex
+            let transaction;
+
+            if (purchaseMode === "instant") {
+                // STANDARD PAYMENT
+                transaction = {
+                    TransactionType: 'Payment',
+                    Destination: destination,
+                    Amount: amountDrops,
+                    Memos: [
+                        {
+                            Memo: {
+                                MemoData: memoDataH3,
+                                MemoType: "6833496E646578", // "h3Index"
+                                MemoFormat: "746578742F706C61696E"
+                            }
+                        },
+                        {
+                            Memo: {
+                                MemoData: memoDataHash,
+                                MemoType: "496D61676548617368", // "ImageHash"
+                                MemoFormat: "746578742F706C61696E"
+                            }
                         }
-                    },
-                    {
-                        Memo: {
-                            MemoData: memoDataHash,
-                            MemoType: "496D61676548617368", // "ImageHash" in hex
-                            MemoFormat: "746578742F706C61696E" // "text/plain" in hex
+                    ]
+                };
+            } else {
+                // ESCROW CREATE
+                // Convert Date to Ripple Epoch (Seconds since 2000-01-01 00:00:00 UTC)
+                const rippleEpochStart = new Date("2000-01-01T00:00:00Z").getTime();
+                const finishAfterTime = new Date(gameDateIso).getTime();
+                const finishAfterRipple = Math.floor((finishAfterTime - rippleEpochStart) / 1000);
+
+                transaction = {
+                    TransactionType: 'EscrowCreate',
+                    Destination: destination,
+                    Amount: amountDrops,
+                    FinishAfter: finishAfterRipple,
+                    Memos: [
+                        {
+                            Memo: {
+                                MemoData: memoDataH3,
+                                MemoType: "6833496E646578", // "h3Index"
+                                MemoFormat: "746578742F706C61696E"
+                            }
+                        },
+                        {
+                            Memo: {
+                                MemoData: memoDataHash,
+                                MemoType: "496D61676548617368", // "ImageHash"
+                                MemoFormat: "746578742F706C61696E"
+                            }
+                        },
+                        {
+                            Memo: {
+                                MemoData: memoDataDate,
+                                MemoType: "47616D6544617465", // "GameDate"
+                                MemoFormat: "746578742F706C61696E"
+                            }
                         }
-                    }
-                ]
-            };
+                    ]
+                };
+            }
 
             // 3. Sign with Wallet
             console.log('Requesting signature...', transaction);
@@ -227,7 +280,7 @@ export function DashboardPanel({ selectedTile, onRefreshTiles }) {
 
         } catch (error) {
             console.error(error);
-            // alert(`Failed to buy tile: ${error.message}`);
+            alert(`Failed to buy tile: ${error.message}`);
         } finally {
             setIsProcessing(false);
         }
@@ -406,7 +459,22 @@ export function DashboardPanel({ selectedTile, onRefreshTiles }) {
 
                                         <div className="pt-4 border-t border-white/10">
                                             {/* Check if NFT is actually in wallet */}
-                                            {selectedOwnedTile.metadata?.nftId && ownedNfts.has(selectedOwnedTile.metadata.nftId) ? (
+                                            {selectedOwnedTile.status === 'PROCESSING' ? (
+                                                <div className="bg-yellow-900/30 border border-yellow-500/30 rounded-xl p-4 text-center">
+                                                    <h4 className="text-yellow-500 font-bold text-sm uppercase tracking-wider mb-2">
+                                                        Escrow en cours
+                                                    </h4>
+                                                    <p className="text-xs text-gray-400 mb-2">
+                                                        Le paiement est verrouillé jusqu'à la date de libération.
+                                                    </p>
+                                                    <div className="bg-black/40 rounded px-2 py-1 mt-2 border border-white/5">
+                                                        <p className="text-[10px] text-gray-500 uppercase font-bold mb-1">Libération</p>
+                                                        <p className="text-xs text-white font-mono">
+                                                            {new Date(selectedOwnedTile.metadata.finishAfter * 1000 + new Date("2000-01-01T00:00:00Z").getTime()).toLocaleString()}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            ) : selectedOwnedTile.metadata?.nftId && ownedNfts.has(selectedOwnedTile.metadata.nftId) ? (
                                                 <div className="bg-gradient-to-r from-purple-900/40 to-pink-900/40 border border-purple-500/30 rounded-xl p-4 text-center">
                                                     <h4 className="text-purple-400 font-bold text-sm uppercase tracking-wider mb-2">
                                                         NFT Possédé
@@ -459,6 +527,62 @@ export function DashboardPanel({ selectedTile, onRefreshTiles }) {
                             </div>
                         ) : (
                             <div className="space-y-6">
+                                {/* Future / Escrow / Unclaimed Tiles */}
+                                {futureTiles.length > 0 && (
+                                    <div>
+                                        <div className="flex items-center justify-between mb-4">
+                                            <h3 className="text-purple-400 text-xs font-semibold tracking-wider uppercase flex items-center">
+                                                <span className="w-2 h-2 bg-purple-400 rounded-full mr-2 animate-pulse"></span>
+                                                EN ATTENTE / À RÉCLAMER
+                                            </h3>
+                                            <span className="bg-purple-900/30 text-purple-400 text-xs font-bold px-2 py-1 rounded-full">
+                                                {futureTiles.length}
+                                            </span>
+                                        </div>
+
+                                        <div className="space-y-3 mb-6">
+                                            {futureTiles.map((tile) => (
+                                                <div
+                                                    key={tile._id}
+                                                    onClick={() => setSelectedOwnedTile(tile)}
+                                                    className="group bg-gray-900/40 border border-gray-800 hover:border-purple-500/50 rounded-xl p-4 transition-all duration-500 hover:bg-gray-900/60 cursor-pointer"
+                                                >
+                                                    <div className="flex justify-between items-start mb-2">
+                                                        <div className="flex items-center space-x-3">
+                                                            <div className="w-8 h-8 rounded-lg bg-purple-900/20 flex items-center justify-center text-purple-400">
+                                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                                                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
+                                                                </svg>
+                                                            </div>
+                                                            <div>
+                                                                <h4 className="text-white font-medium text-sm">Zone {tile._id.substring(0, 8)}...</h4>
+                                                                {tile.status === 'PROCESSING' ? (
+                                                                    <div className="flex flex-col mt-1">
+                                                                        <span className="text-gray-400 text-[10px] uppercase font-bold">Libération prévue :</span>
+                                                                        <span className="text-yellow-400 text-xs font-mono font-bold">
+                                                                            {new Date(tile.metadata.finishAfter * 1000 + new Date("2000-01-01T00:00:00Z").getTime()).toLocaleDateString()} à {new Date(tile.metadata.finishAfter * 1000 + new Date("2000-01-01T00:00:00Z").getTime()).toLocaleTimeString()}
+                                                                        </span>
+                                                                    </div>
+                                                                ) : (
+                                                                    <p className="text-green-400 text-xs font-mono">
+                                                                        NFT Prêt à réclamer
+                                                                    </p>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                        <span className={`text-xs font-bold px-2 py-1 rounded-md ${tile.status === 'PROCESSING'
+                                                            ? "bg-yellow-900/30 text-yellow-500"
+                                                            : "bg-green-900/30 text-green-400"
+                                                            }`}>
+                                                            {tile.status === 'PROCESSING' ? "ESCROW" : "À RÉCLAMER"}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
                                 {/* Active Tiles */}
                                 <div>
                                     <div className="flex items-center justify-between mb-4">
@@ -569,18 +693,53 @@ export function DashboardPanel({ selectedTile, onRefreshTiles }) {
                                     <p className="text-cyan-400 font-mono text-sm">{selectedTile}</p>
                                 </div>
 
+                                {/* Purchase Mode Toggle */}
+                                <div className="bg-gray-900/20 rounded-lg p-1 flex space-x-1 border border-gray-800">
+                                    <button
+                                        onClick={() => setPurchaseMode("instant")}
+                                        className={`flex-1 py-2 text-xs font-bold uppercase rounded transition-all ${purchaseMode === "instant"
+                                            ? "bg-cyan-500 text-black shadow-lg shadow-cyan-500/20"
+                                            : "text-gray-400 hover:text-white hover:bg-white/5"
+                                            }`}
+                                    >
+                                        Immédiat
+                                    </button>
+                                    <button
+                                        onClick={() => setPurchaseMode("future")}
+                                        className={`flex-1 py-2 text-xs font-bold uppercase rounded transition-all ${purchaseMode === "future"
+                                            ? "bg-purple-500 text-white shadow-lg shadow-purple-500/20"
+                                            : "text-gray-400 hover:text-white hover:bg-white/5"
+                                            }`}
+                                    >
+                                        Programmé
+                                    </button>
+                                </div>
+
                                 <div className="space-y-4">
-                                    <div>
-                                        <label className="block text-gray-400 text-xs uppercase font-bold mb-2">
-                                            Date du Jeu
-                                        </label>
-                                        <input
-                                            type="datetime-local"
-                                            value={purchaseDate}
-                                            onChange={(e) => setPurchaseDate(e.target.value)}
-                                            className="w-full bg-black/20 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-cyan-500 transition-colors"
-                                        />
-                                    </div>
+                                    {purchaseMode === "future" && (
+                                        <div className="animate-in fade-in slide-in-from-top-2">
+                                            <label className="block text-purple-400 text-xs uppercase font-bold mb-2">
+                                                Date de déclenchement (Escrow)
+                                            </label>
+                                            <input
+                                                type="datetime-local"
+                                                value={purchaseDate}
+                                                onChange={(e) => setPurchaseDate(e.target.value)}
+                                                className="w-full bg-black/20 border border-purple-500/30 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500 transition-colors"
+                                            />
+                                            <p className="text-[10px] text-gray-500 mt-1">
+                                                Les fonds seront bloqués jusqu'à cette date. Le NFT sera généré automatiquement.
+                                            </p>
+                                        </div>
+                                    )}
+
+                                    {purchaseMode === "instant" && (
+                                        <div className="animate-in fade-in slide-in-from-top-2">
+                                            <p className="text-xs text-gray-400 italic">
+                                                Achat immédiat. Le NFT sera généré et transféré tout de suite.
+                                            </p>
+                                        </div>
+                                    )}
 
                                     <div className="bg-gray-900/20 rounded-lg p-4 border border-gray-800">
                                         <div className="flex justify-between items-center mb-2">
@@ -598,7 +757,9 @@ export function DashboardPanel({ selectedTile, onRefreshTiles }) {
                                         disabled={isProcessing || !accountInfo?.address}
                                         className={`w-full py-3 px-4 rounded-xl font-bold text-white transition-all duration-200 ${isProcessing || !accountInfo?.address
                                             ? "bg-gray-700 cursor-not-allowed"
-                                            : "bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 shadow-lg shadow-cyan-500/20"
+                                            : purchaseMode === "instant"
+                                                ? "bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 shadow-lg shadow-cyan-500/20"
+                                                : "bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-400 hover:to-indigo-500 shadow-lg shadow-purple-500/20"
                                             }`}
                                     >
                                         {isProcessing ? (
@@ -612,7 +773,9 @@ export function DashboardPanel({ selectedTile, onRefreshTiles }) {
                                         ) : !accountInfo?.address ? (
                                             "Connectez votre wallet"
                                         ) : (
-                                            "Acheter la Zone (0.1 XRP)"
+                                            purchaseMode === "instant"
+                                                ? "Acheter Maintenant (0.1 XRP)"
+                                                : "Programmer l'Achat (0.1 XRP)"
                                         )}
                                     </button>
                                 </div>
