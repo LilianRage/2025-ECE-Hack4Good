@@ -27,6 +27,22 @@ export function DashboardPanel({ selectedTile, onRefreshTiles, isConflictZone })
     const [selectedOwnedTile, setSelectedOwnedTile] = useState(null); // For details view
     const [ownedNfts, setOwnedNfts] = useState(new Set());
 
+    // Collapsible sections state (default collapsed)
+    const [expandedSections, setExpandedSections] = useState({
+        future: false,
+        active: false,
+        archive: false
+    });
+
+    const [showAdvancedDetails, setShowAdvancedDetails] = useState(false);
+
+    const toggleSection = (section) => {
+        setExpandedSections(prev => ({
+            ...prev,
+            [section]: !prev[section]
+        }));
+    };
+
     // Fetch User's Owned NFTs
     useEffect(() => {
         const fetchOwnedNfts = async () => {
@@ -153,7 +169,7 @@ export function DashboardPanel({ selectedTile, onRefreshTiles, isConflictZone })
             console.log('Received Image Hash:', imageHash);
 
             // 2. Prepare Transaction
-            const amountDrops = "100000"; // 0.1 XRP
+            const amountDrops = "1140000"; // 1.14 XRP
             const destination = "rKfLLRRRNw12Yo5Ysrx6LsVn3BpRGZNX1v"; // Merchant Wallet (Testnet)
 
             // Memo 1: H3 Index
@@ -402,132 +418,176 @@ export function DashboardPanel({ selectedTile, onRefreshTiles, isConflictZone })
                         {selectedOwnedTile ? (
                             <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300 h-full flex flex-col">
                                 <button
-                                    onClick={() => setSelectedOwnedTile(null)}
-                                    className="flex items-center text-gray-400 hover:text-white transition-colors mb-2"
+                                    onClick={() => {
+                                        setSelectedOwnedTile(null);
+                                        setShowAdvancedDetails(false);
+                                    }}
+                                    className="flex items-center text-gray-400 hover:text-white transition-colors mb-2 group"
                                 >
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                                    </svg>
-                                    Retour à la liste
+                                    <div className="bg-white/5 p-1 rounded-md mr-2 group-hover:bg-white/10 transition-colors">
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                                        </svg>
+                                    </div>
+                                    <span className="text-sm font-medium">Retour à la liste</span>
                                 </button>
 
-                                <div className="bg-gray-900/60 border border-gray-800 rounded-xl overflow-hidden flex-1 flex flex-col">
-                                    {/* Image */}
-                                    <div className="h-48 bg-gray-800 relative">
+                                <div className="bg-black/20 backdrop-blur-md border border-white/5 rounded-2xl overflow-hidden flex-1 flex flex-col shadow-2xl">
+                                    {/* Image Header */}
+                                    <div className="h-56 bg-gray-900 relative group">
                                         {selectedOwnedTile.metadata?.imageUrl ? (
                                             <img
                                                 src={selectedOwnedTile.metadata.imageUrl}
                                                 alt="Tile Asset"
-                                                className="w-full h-full object-cover"
+                                                className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
                                             />
                                         ) : (
-                                            <div className="w-full h-full flex items-center justify-center text-gray-600">
-                                                No Image
+                                            <div className="w-full h-full flex items-center justify-center text-gray-600 bg-gray-900">
+                                                <span className="text-sm">No Image Available</span>
                                             </div>
                                         )}
-                                        <div className="absolute top-2 right-2 bg-black/60 backdrop-blur-sm px-2 py-1 rounded text-xs text-white font-mono">
-                                            {selectedOwnedTile._id}
+                                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent"></div>
+                                        <div className="absolute bottom-4 left-4 right-4">
+                                            <h2 className="text-2xl font-bold text-white mb-1">Zone {selectedOwnedTile._id.substring(0, 8)}</h2>
+                                            <p className="text-gray-400 text-xs font-mono">{selectedOwnedTile._id}</p>
                                         </div>
                                     </div>
 
-                                    {/* Details */}
-                                    <div className="p-4 space-y-4 flex-1 overflow-y-auto">
-                                        <div>
-                                            <label className="text-xs text-gray-500 uppercase font-bold">Date du Jeu</label>
-                                            <p className="text-white font-medium">
-                                                {new Date(selectedOwnedTile.gameDate).toLocaleString()}
-                                            </p>
+                                    {/* Content */}
+                                    <div className="p-6 space-y-6 flex-1 overflow-y-auto custom-scrollbar">
+                                        {/* Primary Info Grid */}
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="bg-white/5 rounded-xl p-3 border border-white/5">
+                                                <label className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1 block">Date d'acquisition</label>
+                                                <p className="text-gray-200 font-medium text-sm">
+                                                    {new Date(selectedOwnedTile.gameDate).toLocaleDateString()}
+                                                </p>
+                                            </div>
+                                            <div className="bg-white/5 rounded-xl p-3 border border-white/5">
+                                                <label className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1 block">Valeur</label>
+                                                <p className="text-white font-bold text-sm">
+                                                    {selectedOwnedTile.metadata?.pricePaid ? parseInt(selectedOwnedTile.metadata.pricePaid) / 1000000 : '1.14'} XRP
+                                                </p>
+                                            </div>
                                         </div>
 
+                                        {/* Status / Action Area */}
                                         <div>
-                                            <label className="text-xs text-gray-500 uppercase font-bold">Prix Payé</label>
-                                            <p className="text-cyan-400 font-bold">
-                                                {selectedOwnedTile.metadata?.pricePaid ? parseInt(selectedOwnedTile.metadata.pricePaid) / 1000000 : '0.1'} XRP
-                                            </p>
-                                        </div>
-
-                                        <div>
-                                            <label className="text-xs text-gray-500 uppercase font-bold">Transaction Hash</label>
-                                            <a
-                                                href={`https://testnet.xrpl.org/transactions/${selectedOwnedTile.metadata?.txHash}`}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="block text-xs text-blue-400 hover:text-blue-300 truncate font-mono mt-1"
-                                            >
-                                                {selectedOwnedTile.metadata?.txHash || 'N/A'}
-                                            </a>
-                                        </div>
-
-                                        <div>
-                                            <label className="text-xs text-gray-500 uppercase font-bold">Image Hash (SHA-256)</label>
-                                            <p className="text-xs text-gray-400 font-mono break-all mt-1">
-                                                {selectedOwnedTile.metadata?.imageHash || 'N/A'}
-                                            </p>
-                                        </div>
-
-                                        <div className="pt-4 border-t border-white/10">
-                                            {/* Check if NFT is actually in wallet */}
                                             {selectedOwnedTile.status === 'PROCESSING' ? (
-                                                <div className="bg-yellow-900/30 border border-yellow-500/30 rounded-xl p-4 text-center">
-                                                    <h4 className="text-yellow-500 font-bold text-sm uppercase tracking-wider mb-2">
-                                                        Escrow en cours
-                                                    </h4>
-                                                    <p className="text-xs text-gray-400 mb-2">
+                                                <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-4">
+                                                    <div className="flex items-center mb-2">
+                                                        <span className="w-2 h-2 rounded-full bg-yellow-500 mr-2 animate-pulse"></span>
+                                                        <h4 className="text-yellow-500 font-bold text-sm uppercase tracking-wider">
+                                                            Escrow en cours
+                                                        </h4>
+                                                    </div>
+                                                    <p className="text-xs text-gray-400 mb-3 leading-relaxed">
                                                         Le paiement est verrouillé jusqu'à la date de libération.
                                                     </p>
-                                                    <div className="bg-black/40 rounded px-2 py-1 mt-2 border border-white/5">
-                                                        <p className="text-[10px] text-gray-500 uppercase font-bold mb-1">Libération</p>
-                                                        <p className="text-xs text-white font-mono">
+                                                    <div className="bg-black/20 rounded-lg px-3 py-2 border border-white/5 flex justify-between items-center">
+                                                        <span className="text-[10px] text-gray-500 uppercase font-bold">Libération</span>
+                                                        <span className="text-xs text-yellow-200 font-mono">
                                                             {new Date(selectedOwnedTile.metadata.finishAfter * 1000 + new Date("2000-01-01T00:00:00Z").getTime()).toLocaleString()}
-                                                        </p>
+                                                        </span>
                                                     </div>
                                                 </div>
                                             ) : selectedOwnedTile.metadata?.nftId && ownedNfts.has(selectedOwnedTile.metadata.nftId) ? (
-                                                <div className="bg-gradient-to-r from-purple-900/40 to-pink-900/40 border border-purple-500/30 rounded-xl p-4 text-center">
-                                                    <h4 className="text-purple-400 font-bold text-sm uppercase tracking-wider mb-2">
-                                                        NFT Possédé
-                                                    </h4>
-                                                    <p className="text-xs text-gray-400 mb-2">
+                                                <div className="bg-green-500/10 border border-green-500/20 rounded-xl p-4">
+                                                    <div className="flex items-center mb-2">
+                                                        <span className="w-2 h-2 rounded-full bg-green-500 mr-2"></span>
+                                                        <h4 className="text-green-500 font-bold text-sm uppercase tracking-wider">
+                                                            Propriété Certifiée
+                                                        </h4>
+                                                    </div>
+                                                    <p className="text-xs text-gray-400 mb-3">
                                                         Ce NFT est sécurisé dans votre wallet.
                                                     </p>
-                                                    <div className="bg-black/40 rounded px-2 py-1 mt-2 border border-white/5">
-                                                        <p className="text-[10px] text-gray-500 uppercase font-bold mb-1">Token ID</p>
-                                                        <p className="text-xs text-white font-mono break-all">
-                                                            {selectedOwnedTile.metadata.nftId}
-                                                        </p>
-                                                    </div>
                                                     <a
                                                         href={`https://testnet.xrpl.org/nft/${selectedOwnedTile.metadata.nftId}`}
                                                         target="_blank"
                                                         rel="noopener noreferrer"
-                                                        className="inline-block mt-3 text-xs text-purple-400 hover:text-purple-300 underline"
+                                                        className="flex items-center justify-center w-full py-2 bg-green-500/20 hover:bg-green-500/30 text-green-400 text-xs font-bold rounded-lg transition-colors"
                                                     >
                                                         Voir sur l'explorateur
+                                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                                        </svg>
                                                     </a>
                                                 </div>
                                             ) : (
-                                                <>
+                                                <div className="space-y-3">
                                                     <button
                                                         onClick={handleClaimNFT}
                                                         disabled={isProcessing}
-                                                        className={`w-full py-3 rounded-lg bg-gradient-to-r from-purple-500 to-pink-600 font-bold text-white shadow-lg hover:shadow-purple-500/25 transition-all transform hover:-translate-y-0.5 ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                                        className={`w-full py-3 rounded-xl bg-white text-black font-bold text-sm shadow-lg hover:bg-gray-100 transition-all transform active:scale-[0.98] ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
                                                     >
                                                         {isProcessing ? (
                                                             <span className="flex items-center justify-center">
-                                                                <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-black" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                                                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                                                                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                                                 </svg>
                                                                 Traitement...
                                                             </span>
                                                         ) : (
-                                                            "Réclamer mon NFT (Wallet)"
+                                                            "Réclamer mon NFT"
                                                         )}
                                                     </button>
-                                                    <p className="text-xs text-center text-gray-500 mt-2">
-                                                        Une offre de transfert a été créée. Vous devez l'accepter dans votre wallet.
+                                                    <p className="text-[10px] text-center text-gray-500">
+                                                        Une transaction sera initiée pour transférer le NFT vers votre wallet.
                                                     </p>
-                                                </>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {/* Advanced Details Section */}
+                                        <div className="border-t border-white/5 pt-2">
+                                            <button
+                                                onClick={() => setShowAdvancedDetails(!showAdvancedDetails)}
+                                                className="flex items-center justify-between w-full py-2 text-xs font-medium text-gray-500 hover:text-gray-300 transition-colors"
+                                            >
+                                                <span>Détails Techniques</span>
+                                                <svg
+                                                    xmlns="http://www.w3.org/2000/svg"
+                                                    className={`h-4 w-4 transition-transform duration-300 ${showAdvancedDetails ? 'rotate-180' : ''}`}
+                                                    fill="none"
+                                                    viewBox="0 0 24 24"
+                                                    stroke="currentColor"
+                                                >
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                                </svg>
+                                            </button>
+
+                                            {showAdvancedDetails && (
+                                                <div className="mt-3 space-y-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                                                    <div>
+                                                        <label className="text-[10px] text-gray-600 uppercase font-bold tracking-wider mb-1 block">Transaction Hash</label>
+                                                        <a
+                                                            href={`https://testnet.xrpl.org/transactions/${selectedOwnedTile.metadata?.txHash}`}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="block text-[10px] text-blue-400 hover:text-blue-300 font-mono break-all bg-blue-500/5 p-2 rounded border border-blue-500/10 hover:border-blue-500/30 transition-colors"
+                                                        >
+                                                            {selectedOwnedTile.metadata?.txHash || 'N/A'}
+                                                        </a>
+                                                    </div>
+
+                                                    <div>
+                                                        <label className="text-[10px] text-gray-600 uppercase font-bold tracking-wider mb-1 block">Image Hash (SHA-256)</label>
+                                                        <div className="text-[10px] text-gray-500 font-mono break-all bg-white/5 p-2 rounded border border-white/5">
+                                                            {selectedOwnedTile.metadata?.imageHash || 'N/A'}
+                                                        </div>
+                                                    </div>
+
+                                                    {selectedOwnedTile.metadata?.nftId && (
+                                                        <div>
+                                                            <label className="text-[10px] text-gray-600 uppercase font-bold tracking-wider mb-1 block">Token ID</label>
+                                                            <div className="text-[10px] text-gray-500 font-mono break-all bg-white/5 p-2 rounded border border-white/5">
+                                                                {selectedOwnedTile.metadata.nftId}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
                                             )}
                                         </div>
                                     </div>
@@ -538,148 +598,170 @@ export function DashboardPanel({ selectedTile, onRefreshTiles, isConflictZone })
                                 {/* Future / Escrow / Unclaimed Tiles */}
                                 {futureTiles.length > 0 && (
                                     <div>
-                                        <div className="flex items-center justify-between mb-4">
+                                        <div
+                                            className="flex items-center justify-between mb-4 cursor-pointer group/header"
+                                            onClick={() => toggleSection('future')}
+                                        >
                                             <h3 className="text-purple-400 text-xs font-semibold tracking-wider uppercase flex items-center">
                                                 <span className="w-2 h-2 bg-purple-400 rounded-full mr-2 animate-pulse"></span>
                                                 EN ATTENTE / À RÉCLAMER
                                             </h3>
-                                            <span className="bg-purple-900/30 text-purple-400 text-xs font-bold px-2 py-1 rounded-full">
-                                                {futureTiles.length}
-                                            </span>
+                                            <div className={`text-purple-400 transition-transform duration-300 ${expandedSections.future ? 'rotate-180' : ''}`}>
+                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                                </svg>
+                                            </div>
                                         </div>
 
-                                        <div className="space-y-3 mb-6">
-                                            {futureTiles.map((tile) => (
-                                                <div
-                                                    key={tile._id}
-                                                    onClick={() => setSelectedOwnedTile(tile)}
-                                                    className="group bg-gray-900/40 border border-gray-800 hover:border-purple-500/50 rounded-xl p-4 transition-all duration-500 hover:bg-gray-900/60 cursor-pointer"
-                                                >
-                                                    <div className="flex justify-between items-start mb-2">
+                                        {expandedSections.future && (
+                                            <div className="space-y-3 mb-6 animate-in fade-in slide-in-from-top-2 duration-200">
+                                                {futureTiles.map((tile) => (
+                                                    <div
+                                                        key={tile._id}
+                                                        onClick={() => setSelectedOwnedTile(tile)}
+                                                        className="group flex items-center justify-between bg-black/20 backdrop-blur-sm border border-white/5 rounded-lg p-3 transition-all duration-300 hover:bg-white/5 hover:border-purple-500/30 cursor-pointer"
+                                                    >
                                                         <div className="flex items-center space-x-3">
-                                                            <div className="w-8 h-8 rounded-lg bg-purple-900/20 flex items-center justify-center text-purple-400">
+                                                            {/* Minimal Icon */}
+                                                            <div className="w-8 h-8 rounded-md bg-purple-500/10 flex items-center justify-center text-purple-400 group-hover:bg-purple-500/20 transition-colors">
                                                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
                                                                     <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
                                                                 </svg>
                                                             </div>
+
+                                                            {/* Text Info */}
                                                             <div>
-                                                                <h4 className="text-white font-medium text-sm">Zone {tile._id.substring(0, 8)}...</h4>
+                                                                <h4 className="text-gray-200 font-medium text-sm">Zone {tile._id.substring(0, 8)}...</h4>
                                                                 {tile.status === 'PROCESSING' ? (
-                                                                    <div className="flex flex-col mt-1">
-                                                                        <span className="text-gray-400 text-[10px] uppercase font-bold">Libération prévue :</span>
-                                                                        <span className="text-yellow-400 text-xs font-mono font-bold">
-                                                                            {new Date(tile.metadata.finishAfter * 1000 + new Date("2000-01-01T00:00:00Z").getTime()).toLocaleDateString()} à {new Date(tile.metadata.finishAfter * 1000 + new Date("2000-01-01T00:00:00Z").getTime()).toLocaleTimeString()}
-                                                                        </span>
-                                                                    </div>
+                                                                    <p className="text-gray-500 text-xs mt-0.5">
+                                                                        Libération : {new Date(tile.metadata.finishAfter * 1000 + new Date("2000-01-01T00:00:00Z").getTime()).toLocaleDateString()}
+                                                                    </p>
                                                                 ) : (
-                                                                    <p className="text-green-400 text-xs font-mono">
-                                                                        NFT Prêt à réclamer
+                                                                    <p className="text-gray-500 text-xs mt-0.5">
+                                                                        Prêt à réclamer
                                                                     </p>
                                                                 )}
                                                             </div>
                                                         </div>
-                                                        <span className={`text-xs font-bold px-2 py-1 rounded-md ${tile.status === 'PROCESSING'
-                                                            ? "bg-yellow-900/30 text-yellow-500"
-                                                            : "bg-green-900/30 text-green-400"
-                                                            }`}>
-                                                            {tile.status === 'PROCESSING' ? "ESCROW" : "À RÉCLAMER"}
-                                                        </span>
+
+                                                        {/* Status Indicator (Minimal) */}
+                                                        <div className="flex items-center">
+                                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-600 ml-3 group-hover:text-gray-400 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                                            </svg>
+                                                        </div>
                                                     </div>
-                                                </div>
-                                            ))}
-                                        </div>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
                                 )}
 
                                 {/* Active Tiles */}
                                 <div>
-                                    <div className="flex items-center justify-between mb-4">
+                                    <div
+                                        className="flex items-center justify-between mb-4 cursor-pointer group/header"
+                                        onClick={() => toggleSection('active')}
+                                    >
                                         <h3 className="text-cyan-400 text-xs font-semibold tracking-wider uppercase flex items-center">
                                             <span className="w-2 h-2 bg-cyan-400 rounded-full mr-2 animate-pulse"></span>
                                             TUILES ACTIVES
                                         </h3>
-                                        <span className="bg-cyan-900/30 text-cyan-400 text-xs font-bold px-2 py-1 rounded-full">
-                                            {activeTiles.length}
-                                        </span>
+                                        <div className={`text-cyan-400 transition-transform duration-300 ${expandedSections.active ? 'rotate-180' : ''}`}>
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                            </svg>
+                                        </div>
                                     </div>
 
-                                    <div className="space-y-3">
-                                        {activeTiles.length === 0 ? (
-                                            <p className="text-gray-600 text-xs italic text-center py-4">Aucune tuile active</p>
-                                        ) : (
-                                            activeTiles.map((tile) => (
-                                                <div
-                                                    key={tile._id}
-                                                    onClick={() => setSelectedOwnedTile(tile)}
-                                                    className={`group bg-gray-900/40 border border-gray-800 hover:border-cyan-500/50 rounded-xl p-4 transition-all duration-500 hover:bg-gray-900/60 cursor-pointer ${newTileId === tile._id ? 'animate-in fade-in slide-in-from-top-4 border-cyan-500 shadow-lg shadow-cyan-500/20' : ''}`}
-                                                >
-                                                    <div className="flex justify-between items-start mb-2">
+                                    {expandedSections.active && (
+                                        <div className="space-y-3 animate-in fade-in slide-in-from-top-2 duration-200">
+                                            {activeTiles.length === 0 ? (
+                                                <p className="text-gray-600 text-xs italic text-center py-4">Aucune tuile active</p>
+                                            ) : (
+                                                activeTiles.map((tile) => (
+                                                    <div
+                                                        key={tile._id}
+                                                        onClick={() => setSelectedOwnedTile(tile)}
+                                                        className={`group flex items-center justify-between bg-black/20 backdrop-blur-sm border border-white/5 rounded-lg p-3 transition-all duration-300 hover:bg-white/5 hover:border-cyan-500/30 cursor-pointer ${newTileId === tile._id ? 'animate-in fade-in slide-in-from-top-4 border-cyan-500/50 shadow-lg shadow-cyan-500/10' : ''}`}
+                                                    >
                                                         <div className="flex items-center space-x-3">
-                                                            <div className="w-8 h-8 rounded-lg bg-cyan-900/20 flex items-center justify-center text-cyan-400">
+                                                            <div className="w-8 h-8 rounded-md bg-cyan-500/10 flex items-center justify-center text-cyan-400 group-hover:bg-cyan-500/20 transition-colors">
                                                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
                                                                     <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
                                                                 </svg>
                                                             </div>
                                                             <div>
-                                                                <h4 className="text-white font-medium text-sm">Zone {tile._id.substring(0, 8)}...</h4>
-                                                                <p className="text-cyan-500 text-xs font-mono">
-                                                                    {new Date(tile.gameDate).toLocaleString()}
+                                                                <h4 className="text-gray-200 font-medium text-sm">Zone {tile._id.substring(0, 8)}...</h4>
+                                                                <p className="text-gray-500 text-xs mt-0.5">
+                                                                    {new Date(tile.gameDate).toLocaleDateString()}
                                                                 </p>
                                                             </div>
                                                         </div>
-                                                        <span className="text-xs font-bold px-2 py-1 rounded-md bg-cyan-900 text-cyan-200">
-                                                            ACTIF
-                                                        </span>
+
+                                                        <div className="flex items-center">
+                                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-600 ml-3 group-hover:text-gray-400 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                                            </svg>
+                                                        </div>
                                                     </div>
-                                                </div>
-                                            ))
-                                        )}
-                                    </div>
+                                                ))
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* Archive Tiles */}
                                 <div>
-                                    <div className="flex items-center justify-between mb-4">
+                                    <div
+                                        className="flex items-center justify-between mb-4 cursor-pointer group/header"
+                                        onClick={() => toggleSection('archive')}
+                                    >
                                         <h3 className="text-gray-500 text-xs font-semibold tracking-wider uppercase">
                                             ARCHIVES
                                         </h3>
-                                        <span className="bg-gray-800 text-gray-400 text-xs font-bold px-2 py-1 rounded-full">
-                                            {archiveTiles.length}
-                                        </span>
+                                        <div className={`text-gray-500 transition-transform duration-300 ${expandedSections.archive ? 'rotate-180' : ''}`}>
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                            </svg>
+                                        </div>
                                     </div>
 
-                                    <div className="space-y-3 opacity-75 hover:opacity-100 transition-opacity">
-                                        {archiveTiles.length === 0 ? (
-                                            <p className="text-gray-600 text-xs italic text-center py-4">Aucune archive</p>
-                                        ) : (
-                                            archiveTiles.map((tile) => (
-                                                <div
-                                                    key={tile._id}
-                                                    onClick={() => setSelectedOwnedTile(tile)}
-                                                    className="group bg-black/20 border border-gray-800 rounded-xl p-4 transition-all duration-200 cursor-pointer hover:bg-gray-900/40"
-                                                >
-                                                    <div className="flex justify-between items-start mb-2">
+                                    {expandedSections.archive && (
+                                        <div className="space-y-3 opacity-75 hover:opacity-100 transition-opacity animate-in fade-in slide-in-from-top-2 duration-200">
+                                            {archiveTiles.length === 0 ? (
+                                                <p className="text-gray-600 text-xs italic text-center py-4">Aucune archive</p>
+                                            ) : (
+                                                archiveTiles.map((tile) => (
+                                                    <div
+                                                        key={tile._id}
+                                                        onClick={() => setSelectedOwnedTile(tile)}
+                                                        className="group flex items-center justify-between bg-black/20 backdrop-blur-sm border border-white/5 rounded-lg p-3 transition-all duration-300 hover:bg-white/5 cursor-pointer opacity-60 hover:opacity-100"
+                                                    >
                                                         <div className="flex items-center space-x-3">
-                                                            <div className="w-8 h-8 rounded-lg bg-gray-800 flex items-center justify-center text-gray-500">
+                                                            <div className="w-8 h-8 rounded-md bg-white/5 flex items-center justify-center text-gray-500 group-hover:bg-white/10 transition-colors">
                                                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
                                                                     <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" />
                                                                 </svg>
                                                             </div>
                                                             <div>
-                                                                <h4 className="text-gray-400 font-medium text-sm">Zone {tile._id.substring(0, 8)}...</h4>
-                                                                <p className="text-gray-600 text-xs font-mono">
+                                                                <h4 className="text-gray-400 font-medium text-sm group-hover:text-gray-300 transition-colors">Zone {tile._id.substring(0, 8)}...</h4>
+                                                                <p className="text-gray-600 text-xs mt-0.5">
                                                                     {new Date(tile.gameDate).toLocaleDateString()}
                                                                 </p>
                                                             </div>
                                                         </div>
-                                                        <span className="text-xs font-bold px-2 py-1 rounded-md bg-gray-800 text-gray-500">
-                                                            ARCHIVE
-                                                        </span>
+
+                                                        <div className="flex items-center">
+                                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-700 ml-3 group-hover:text-gray-500 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                                            </svg>
+                                                        </div>
                                                     </div>
-                                                </div>
-                                            ))
-                                        )}
-                                    </div>
+                                                ))
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         )}
@@ -700,54 +782,64 @@ export function DashboardPanel({ selectedTile, onRefreshTiles, isConflictZone })
                                     Retour aux missions
                                 </button>
 
-                                <div className="bg-red-900/40 border border-red-800 rounded-xl p-4">
-                                    <h3 className="text-white font-bold text-lg mb-1">Conflit Saharien</h3>
-                                    <p className="text-red-400 font-mono text-sm">Mission Communautaire</p>
-                                </div>
-
-                                <div className="bg-gray-900/40 border border-gray-800 rounded-xl p-6 space-y-6 flex-1 overflow-y-auto">
-                                    {/* Progress Bar */}
-                                    <div>
-                                        <div className="flex justify-between items-end mb-2">
-                                            <span className="text-gray-400 text-xs uppercase font-bold">Progression de la Paix</span>
-                                            <span className="text-white font-mono font-bold">65%</span>
-                                        </div>
-                                        <div className="w-full bg-gray-800 rounded-full h-4 overflow-hidden">
-                                            <div
-                                                className="bg-gradient-to-r from-red-500 to-orange-500 h-full rounded-full transition-all duration-1000 ease-out"
-                                                style={{ width: '65%' }}
-                                            ></div>
-                                        </div>
-                                        <p className="text-[10px] text-gray-500 mt-2 text-right">
-                                            Objectif: 100% pour débloquer la zone
-                                        </p>
-                                    </div>
-
-                                    {/* Cagnotte */}
-                                    <div className="bg-black/40 rounded-xl p-4 border border-white/5 flex items-center justify-between">
+                                <div className="bg-black/20 backdrop-blur-md border border-white/5 rounded-2xl p-6 shadow-xl">
+                                    <div className="flex justify-between items-start mb-6">
                                         <div>
-                                            <p className="text-gray-500 text-xs uppercase font-bold mb-1">Cagnotte Récoltée</p>
-                                            <p className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-yellow-600">
-                                                1,250,000 XRP
-                                            </p>
+                                            <h3 className="text-white font-bold text-xl mb-1">Conflit Saharien</h3>
+                                            <p className="text-gray-500 font-medium text-xs uppercase tracking-wider">Mission Communautaire</p>
                                         </div>
-                                        <div className="h-10 w-10 bg-yellow-900/20 rounded-full flex items-center justify-center border border-yellow-500/30">
-                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-yellow-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                        <div className="bg-white/5 p-2 rounded-lg">
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                                             </svg>
                                         </div>
                                     </div>
 
-                                    <div className="pt-4 border-t border-white/5">
-                                        <button
-                                            onClick={() => setActiveTab("acheter une zone")}
-                                            className="w-full py-3 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold transition-colors shadow-lg shadow-red-600/20"
-                                        >
-                                            Contribuer à la Mission
-                                        </button>
-                                        <p className="text-[10px] text-gray-500 mt-2 text-center">
-                                            Cela vous redirigera vers l'achat de zones dans le conflit.
-                                        </p>
+                                    <div className="space-y-6">
+                                        {/* Progress Bar */}
+                                        <div>
+                                            <div className="flex justify-between items-end mb-2">
+                                                <span className="text-gray-400 text-[10px] uppercase font-bold tracking-wider">Progression de tuiles découverte</span>
+                                                <span className="text-white font-mono font-bold text-sm">65%</span>
+                                            </div>
+                                            <div className="w-full bg-white/5 rounded-full h-2 overflow-hidden">
+                                                <div
+                                                    className="bg-white h-full rounded-full transition-all duration-1000 ease-out"
+                                                    style={{ width: '65%' }}
+                                                ></div>
+                                            </div>
+                                            <p className="text-[10px] text-gray-600 mt-2 text-right">
+                                                Objectif: 100% pour débloquer la zone
+                                            </p>
+                                        </div>
+
+                                        {/* Stats Grid */}
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="bg-white/5 rounded-xl p-4 border border-white/5">
+                                                <p className="text-gray-500 text-[10px] uppercase font-bold tracking-wider mb-1">XRPL Dépensés</p>
+                                                <p className="text-xl font-bold text-white">
+                                                    30 XRP
+                                                </p>
+                                            </div>
+                                            <div className="bg-white/5 rounded-xl p-4 border border-white/5">
+                                                <p className="text-gray-500 text-[10px] uppercase font-bold tracking-wider mb-1">Participants</p>
+                                                <p className="text-xl font-bold text-white">
+                                                    1,248
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        <div className="pt-2">
+                                            <button
+                                                onClick={() => setActiveTab("acheter une zone")}
+                                                className="w-full py-3 rounded-xl bg-white text-black font-bold text-sm hover:bg-gray-200 transition-colors shadow-lg active:scale-[0.98] transform duration-100"
+                                            >
+                                                Contribuer à la Mission
+                                            </button>
+                                            <p className="text-[10px] text-gray-600 mt-3 text-center">
+                                                Cela vous redirigera vers l'achat de zones dans le conflit.
+                                            </p>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -760,10 +852,10 @@ export function DashboardPanel({ selectedTile, onRefreshTiles, isConflictZone })
                                 {/* Mission Card */}
                                 <div
                                     onClick={() => setMissionView('details')}
-                                    className="group bg-gray-900/40 border border-gray-800 hover:border-red-500/50 rounded-xl p-4 transition-all duration-300 cursor-pointer hover:bg-gray-900/60 relative overflow-hidden"
+                                    className="group bg-black/20 backdrop-blur-sm border border-white/5 hover:border-white/20 rounded-xl p-4 transition-all duration-300 cursor-pointer hover:bg-white/5 relative overflow-hidden"
                                 >
-                                    <div className="absolute top-0 right-0 p-2 opacity-10 group-hover:opacity-20 transition-opacity">
-                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-24 w-24 text-red-500" fill="currentColor" viewBox="0 0 20 20">
+                                    <div className="absolute top-0 right-0 p-2 opacity-5 group-hover:opacity-10 transition-opacity">
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-24 w-24 text-white" fill="currentColor" viewBox="0 0 20 20">
                                             <path fillRule="evenodd" d="M3 6a3 3 0 013-3h10a1 1 0 01.8 1.6L14.25 8l2.55 4.4A1 1 0 0116 14H6a1 1 0 01-1-1V6zm5.5 1.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zM5 11.5a1.5 1.5 0 100-3 1.5 1.5 0 000 3zm3.5 1.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z" clipRule="evenodd" />
                                         </svg>
                                     </div>
@@ -859,7 +951,7 @@ export function DashboardPanel({ selectedTile, onRefreshTiles, isConflictZone })
                                     <div className="bg-gray-900/20 rounded-lg p-4 border border-gray-800">
                                         <div className="flex justify-between items-center mb-2">
                                             <span className="text-gray-400 text-sm">Prix</span>
-                                            <span className="text-white font-bold">0.1 XRP</span>
+                                            <span className="text-white font-bold">1.14 XRP</span>
                                         </div>
                                         <div className="flex justify-between items-center">
                                             <span className="text-gray-400 text-sm">Frais estimés</span>
@@ -889,8 +981,8 @@ export function DashboardPanel({ selectedTile, onRefreshTiles, isConflictZone })
                                             "Connectez votre wallet"
                                         ) : (
                                             purchaseMode === "instant"
-                                                ? "Acheter Maintenant (0.1 XRP)"
-                                                : "Programmer l'Achat (0.1 XRP)"
+                                                ? "Acheter Maintenant (1.14 XRP)"
+                                                : "Programmer l'Achat (1.14 XRP)"
                                         )}
                                     </button>
                                 </div>

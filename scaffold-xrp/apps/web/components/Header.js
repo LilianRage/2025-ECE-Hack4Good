@@ -1,6 +1,6 @@
 "use client";
 
-import { WalletConnector } from "./WalletConnector";
+import { CustomWalletConnect } from "./CustomWalletConnect";
 import { useWalletManager } from "../hooks/useWalletManager";
 import { useWallet } from "./providers/WalletProvider";
 
@@ -9,8 +9,8 @@ export function Header() {
   const { statusMessage } = useWallet();
 
   return (
-    <header className="bg-transparent border-none pt-12 pb-6 absolute top-0 left-0 w-full z-50 pointer-events-none">
-      <div className="w-full px-6">
+    <header className="bg-transparent border-none pt-4 pb-2 absolute top-0 left-0 w-full z-50 pointer-events-none">
+      <div className="w-full px-16">
         <div className="flex items-center justify-between pointer-events-auto">
           {/* Logo */}
           <div className="flex flex-col items-center">
@@ -24,10 +24,8 @@ export function Header() {
 
           {/* Right Side */}
           <div className="flex items-center space-x-6">
-            <span className="text-gray-400 text-sm font-medium hidden md:block bg-black/50 px-3 py-1 rounded-lg backdrop-blur-sm border border-white/10">
-              r34o...Pgne
-            </span>
-            <WalletConnector />
+
+            <CustomWalletConnect />
           </div>
         </div>
       </div>
