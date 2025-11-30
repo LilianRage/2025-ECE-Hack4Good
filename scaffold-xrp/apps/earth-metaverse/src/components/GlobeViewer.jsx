@@ -3,14 +3,16 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import * as Cesium from 'cesium';
 import * as h3 from 'h3-js';
 import 'cesium/Build/Cesium/Widgets/widgets.css';
-import { fetchTiles, lockTile, confirmTile } from '../services/api';
+import { fetchTiles, lockTile, confirmTile, getTile } from '../services/api';
 import { DateTimePicker } from './DateTimePicker';
 
 const GlobeViewer = () => {
     const containerRef = useRef(null);
     const viewerRef = useRef(null);
     const [selectedH3Index, setSelectedH3Index] = useState(null);
-    const [lockedTiles, setLockedTiles] = useState(new Map()); // Map<h3Index, tileData>
+    const [lockedTiles, setLockedTiles] = useState(new Map()); // Map<h3Index, tileData> (Server Tiles)
+    const [forcedTiles, setForcedTiles] = useState(new Map()); // Map<h3Index, tileData> (Forced Visible Tiles)
+    const [displayTiles, setDisplayTiles] = useState(new Map()); // Merged Tiles for Display
     const [isLocking, setIsLocking] = useState(false);
 
     // Date States
@@ -50,6 +52,15 @@ const GlobeViewer = () => {
         });
         setLockedTiles(newLockedTiles);
     }, [filterDate]);
+
+    // Merge Effect
+    useEffect(() => {
+        const merged = new Map(lockedTiles);
+        forcedTiles.forEach((value, key) => {
+            merged.set(key, value);
+        });
+        setDisplayTiles(merged);
+    }, [lockedTiles, forcedTiles]);
 
     useEffect(() => {
         loadTiles();
@@ -124,7 +135,18 @@ const GlobeViewer = () => {
             if (Cesium.defined(pickedObject) && typeof pickedObject.id === 'string') {
                 console.log('Clicked H3 Hexagon ID:', pickedObject.id);
                 setSelectedH3Index(pickedObject.id);
-                window.parent.postMessage({ type: 'TILE_SELECTED', h3Index: pickedObject.id }, '*');
+
+                // Check if it is in conflict zone
+                const targetHex = '835962fffffffff';
+                const conflictZoneHexes = h3.gridDisk(targetHex, 4);
+                const conflictZoneSet = new Set(conflictZoneHexes);
+                const isConflictZone = conflictZoneSet.has(pickedObject.id);
+
+                window.parent.postMessage({
+                    type: 'TILE_SELECTED',
+                    h3Index: pickedObject.id,
+                    isConflictZone: isConflictZone
+                }, '*');
             } else {
                 setSelectedH3Index(null);
                 window.parent.postMessage({ type: 'TILE_SELECTED', h3Index: null }, '*');
@@ -156,10 +178,35 @@ const GlobeViewer = () => {
         viewer.clock.onTick.addEventListener(onTick);
 
         // Message Listener
-        const handleRefresh = (event) => {
-            if (event.data?.type === 'REFRESH_TILES') loadTiles();
+        const handleRefresh = async (event) => {
+            if (event.data?.type === 'REFRESH_TILES') {
+                // Update filterDate to now to ensure we see newly minted tiles
+                const now = new Date();
+                now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+                const newDate = now.toISOString().slice(0, 16);
+
+                if (newDate !== filterDate) {
+                    setFilterDate(newDate); // Will trigger useEffect -> loadTiles
+                } else {
+                    loadTiles(); // Force load if date hasn't changed
+                }
+            }
             if (event.data?.type === 'PURCHASE_SUCCESS') {
                 const h3Index = event.data.h3Index;
+
+                // Fetch only the updated tile
+                const updatedTile = await getTile(h3Index);
+                if (updatedTile) {
+                    setForcedTiles(prev => {
+                        const newMap = new Map(prev);
+                        newMap.set(h3Index, updatedTile);
+                        return newMap;
+                    });
+                }
+
+                // Also trigger loadTiles to refresh others if needed
+                loadTiles();
+
                 if (!viewer || viewer.isDestroyed()) return;
 
                 const boundary = h3.cellToBoundary(h3Index);
@@ -182,10 +229,16 @@ const GlobeViewer = () => {
                     }
                 });
 
-                setTimeout(() => {
-                    if (viewer && !viewer.isDestroyed()) viewer.entities.remove(entity);
-                }, 3000);
-                loadTiles();
+                // No longer removing the entity automatically
+                // The main loop will pick it up via lockedTiles update, 
+                // but we keep this entity for immediate feedback if needed.
+                // Actually, if we update lockedTiles, the main effect will re-run and clear all entities.
+                // So we don't need to worry about duplicate entities, as the main effect clears them.
+                // BUT, the main effect might take a split second. 
+                // Let's just NOT remove it here. The main effect (line 216) clears viewer.entities.removeAll()
+                // so this temporary entity will be cleared when the state updates.
+                // Perfect.
+
             }
         };
         window.addEventListener('message', handleRefresh);
@@ -211,35 +264,19 @@ const GlobeViewer = () => {
         tilesPrimitivesRef.current = [];
         viewer.entities.removeAll(); // Clear entities (labels, images)
 
-        // Re-add Conflict Zone Label
+        // Conflict Zone Definition
         const targetHex = '835962fffffffff';
-        const [targetLat, targetLon] = h3.cellToLatLng(targetHex);
         const conflictZoneHexes = h3.gridDisk(targetHex, 4);
         const conflictZoneSet = new Set(conflictZoneHexes);
-
-        viewer.entities.add({
-            id: 'conflict-zone-label',
-            position: Cesium.Cartesian3.fromDegrees(targetLon, targetLat, 100000),
-            label: {
-                text: 'ZONE DE CONFLIT\nMISSION COMMUNAUTAIRE',
-                font: 'bold 16px Inter, sans-serif',
-                fillColor: Cesium.Color.WHITE,
-                outlineColor: Cesium.Color.BLACK,
-                outlineWidth: 4,
-                style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-                verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-                pixelOffset: new Cesium.Cartesian2(0, -20),
-                distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 10000000)
-            }
-        });
 
         // Generate Primitives
         const res0Cells = h3.getRes0Cells();
         const allHexagons = res0Cells.flatMap(res0 => h3.cellToChildren(res0, 3));
         const instances = [];
         const outlineInstances = [];
+        const conflictOutlineInstances = []; // Separate instances for thicker conflict zone outlines
 
-        const baseColor = Cesium.Color.BLACK.withAlpha(0.85);
+        const baseColor = Cesium.Color.fromCssColorString('#1a2332').withAlpha(0.85);
         const lockedColor = Cesium.Color.RED.withAlpha(0.5);
         const ownedColor = Cesium.Color.WHITE.withAlpha(0.01);
         const outlineColor = Cesium.Color.WHITE.withAlpha(0.1);
@@ -271,7 +308,7 @@ const GlobeViewer = () => {
             if (uniquePositions.length < 6) return;
 
             const polygonHierarchy = new Cesium.PolygonHierarchy(Cesium.Cartesian3.fromDegreesArray(uniquePositions));
-            const tileData = lockedTiles.get(h3Index);
+            const tileData = displayTiles.get(h3Index);
 
             // Image Entity Case
             if (tileData?.status === 'OWNED' && tileData.metadata?.imageUrl) {
@@ -282,7 +319,8 @@ const GlobeViewer = () => {
                         material: new Cesium.ImageMaterialProperty({ image: tileData.metadata.imageUrl, transparent: false }),
                         height: 0,
                         outline: true,
-                        outlineColor: conflictZoneSet.has(h3Index) ? conflictOutlineColor : outlineColor
+                        outlineColor: conflictZoneSet.has(h3Index) ? conflictOutlineColor : outlineColor,
+                        outlineWidth: conflictZoneSet.has(h3Index) ? Math.min(4, viewer.scene.maximumAliasedLineWidth) : 1
                     }
                 });
                 return;
@@ -298,10 +336,17 @@ const GlobeViewer = () => {
                 id: h3Index,
             }));
 
-            outlineInstances.push(new Cesium.GeometryInstance({
-                geometry: new Cesium.PolygonOutlineGeometry({ polygonHierarchy, height: 0 }),
-                attributes: { color: Cesium.ColorGeometryInstanceAttribute.fromColor(conflictZoneSet.has(h3Index) ? conflictOutlineColor : outlineColor) },
-            }));
+            if (conflictZoneSet.has(h3Index)) {
+                conflictOutlineInstances.push(new Cesium.GeometryInstance({
+                    geometry: new Cesium.PolygonOutlineGeometry({ polygonHierarchy, height: 0 }),
+                    attributes: { color: Cesium.ColorGeometryInstanceAttribute.fromColor(conflictOutlineColor) },
+                }));
+            } else {
+                outlineInstances.push(new Cesium.GeometryInstance({
+                    geometry: new Cesium.PolygonOutlineGeometry({ polygonHierarchy, height: 0 }),
+                    attributes: { color: Cesium.ColorGeometryInstanceAttribute.fromColor(outlineColor) },
+                }));
+            }
         });
 
         if (instances.length > 0) {
@@ -324,7 +369,23 @@ const GlobeViewer = () => {
             tilesPrimitivesRef.current.push(outlinePrimitive);
         }
 
-    }, [lockedTiles]); // Only re-run when tiles change
+        if (conflictOutlineInstances.length > 0) {
+            const conflictOutlinePrimitive = new Cesium.Primitive({
+                geometryInstances: conflictOutlineInstances,
+                appearance: new Cesium.PerInstanceColorAppearance({
+                    flat: true,
+                    translucent: true,
+                    renderState: {
+                        lineWidth: Math.min(4.0, viewer.scene.maximumAliasedLineWidth)
+                    }
+                }),
+                asynchronous: false,
+            });
+            viewer.scene.primitives.add(conflictOutlinePrimitive);
+            tilesPrimitivesRef.current.push(conflictOutlinePrimitive);
+        }
+
+    }, [displayTiles]); // Only re-run when tiles change
 
     // 3. Selection & Highlight Effect
     const highlightPrimitiveRef = useRef(null);

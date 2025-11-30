@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { checkHealth } from '../controllers/health.controller';
-import { lockTile, getTilesInView, confirmTile, getUserTiles, getNftMetadata, getAccountNfts, processEscrows, checkAndProcessEscrows } from '../controllers/tile.controller';
+import { lockTile, getTilesInView, confirmTile, getUserTiles, getNftMetadata, getAccountNfts, processEscrows, checkAndProcessEscrows, getTile } from '../controllers/tile.controller';
 
 const router = Router();
 
@@ -9,6 +9,7 @@ router.get('/health', checkHealth);
 // Tile routes
 router.post('/tile/lock', lockTile);
 router.post('/tile/confirm', confirmTile);
+router.get('/tile/:h3Index', getTile);
 router.get('/tiles', getTilesInView);
 router.get('/tiles/user/:address', getUserTiles);
 router.get('/metadata/:h3Index', getNftMetadata);

@@ -5,7 +5,7 @@ import { WalletProvider } from "../components/providers/WalletProvider";
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <body className="bg-black">
         <WalletProvider>{children}</WalletProvider>
       </body>

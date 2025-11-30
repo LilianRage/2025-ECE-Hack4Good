@@ -313,6 +313,21 @@ export const getUserTiles = async (req: Request, res: Response) => {
     }
 };
 
+export const getTile = async (req: Request, res: Response) => {
+    const { h3Index } = req.params;
+
+    try {
+        const tile = await Tile.findById(h3Index).lean();
+        if (!tile) {
+            return res.status(404).json({ error: 'Tile not found' });
+        }
+        return res.status(200).json(tile);
+    } catch (error) {
+        console.error('Error fetching tile:', error);
+        return res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
 export const getNftMetadata = async (req: Request, res: Response) => {
     const { h3Index } = req.params;
 

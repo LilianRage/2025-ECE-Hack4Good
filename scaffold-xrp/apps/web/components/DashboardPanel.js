@@ -5,8 +5,9 @@ import { useWallet } from "./providers/WalletProvider";
 import { lockTile, confirmTile, fetchUserTiles } from "../services/api";
 
 
-export function DashboardPanel({ selectedTile, onRefreshTiles }) {
+export function DashboardPanel({ selectedTile, onRefreshTiles, isConflictZone }) {
     const [activeTab, setActiveTab] = useState("ma terre");
+    const [missionView, setMissionView] = useState('list'); // 'list' or 'details'
     const { accountInfo, walletManager } = useWallet();
     const [isProcessing, setIsProcessing] = useState(false);
 
@@ -113,11 +114,15 @@ export function DashboardPanel({ selectedTile, onRefreshTiles }) {
 
     // Switch to "acheter une zone" when a tile is selected from map
     useEffect(() => {
-        if (selectedTile) {
+        if (selectedTile && !isConflictZone) {
             setActiveTab("acheter une zone");
             setSelectedOwnedTile(null); // Close details if map selection happens
+        } else if (isConflictZone) {
+            setActiveTab("collaboration");
+            setMissionView('details');
+            setSelectedOwnedTile(null);
         }
-    }, [selectedTile]);
+    }, [selectedTile, isConflictZone]);
 
     const handleBuyTile = async () => {
         if (!selectedTile) return;
@@ -354,6 +359,9 @@ export function DashboardPanel({ selectedTile, onRefreshTiles }) {
             if (result?.result?.hash || result?.hash) {
                 alert("NFT Claimed Successfully! It is now in your wallet.");
                 // Refresh to show updated status if needed (though ownership doesn't change visually)
+                if (onRefreshTiles && selectedOwnedTile) {
+                    onRefreshTiles(selectedOwnedTile._id);
+                }
             } else {
                 throw new Error("Transaction failed");
             }
@@ -679,8 +687,115 @@ export function DashboardPanel({ selectedTile, onRefreshTiles }) {
                 )}
 
                 {activeTab === "collaboration" && (
-                    <div className="flex flex-col items-center justify-center h-64 text-gray-500">
-                        <p>Prochainement...</p>
+                    <div className="h-full flex flex-col">
+                        {missionView === 'details' || isConflictZone ? (
+                            <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300 h-full flex flex-col">
+                                <button
+                                    onClick={() => setMissionView('list')}
+                                    className="flex items-center text-gray-400 hover:text-white transition-colors mb-2"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                                    </svg>
+                                    Retour aux missions
+                                </button>
+
+                                <div className="bg-red-900/40 border border-red-800 rounded-xl p-4">
+                                    <h3 className="text-white font-bold text-lg mb-1">Conflit Saharien</h3>
+                                    <p className="text-red-400 font-mono text-sm">Mission Communautaire</p>
+                                </div>
+
+                                <div className="bg-gray-900/40 border border-gray-800 rounded-xl p-6 space-y-6 flex-1 overflow-y-auto">
+                                    {/* Progress Bar */}
+                                    <div>
+                                        <div className="flex justify-between items-end mb-2">
+                                            <span className="text-gray-400 text-xs uppercase font-bold">Progression de la Paix</span>
+                                            <span className="text-white font-mono font-bold">65%</span>
+                                        </div>
+                                        <div className="w-full bg-gray-800 rounded-full h-4 overflow-hidden">
+                                            <div
+                                                className="bg-gradient-to-r from-red-500 to-orange-500 h-full rounded-full transition-all duration-1000 ease-out"
+                                                style={{ width: '65%' }}
+                                            ></div>
+                                        </div>
+                                        <p className="text-[10px] text-gray-500 mt-2 text-right">
+                                            Objectif: 100% pour débloquer la zone
+                                        </p>
+                                    </div>
+
+                                    {/* Cagnotte */}
+                                    <div className="bg-black/40 rounded-xl p-4 border border-white/5 flex items-center justify-between">
+                                        <div>
+                                            <p className="text-gray-500 text-xs uppercase font-bold mb-1">Cagnotte Récoltée</p>
+                                            <p className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-yellow-400 to-yellow-600">
+                                                1,250,000 XRP
+                                            </p>
+                                        </div>
+                                        <div className="h-10 w-10 bg-yellow-900/20 rounded-full flex items-center justify-center border border-yellow-500/30">
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-yellow-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                            </svg>
+                                        </div>
+                                    </div>
+
+                                    <div className="pt-4 border-t border-white/5">
+                                        <button
+                                            onClick={() => setActiveTab("acheter une zone")}
+                                            className="w-full py-3 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold transition-colors shadow-lg shadow-red-600/20"
+                                        >
+                                            Contribuer à la Mission
+                                        </button>
+                                        <p className="text-[10px] text-gray-500 mt-2 text-center">
+                                            Cela vous redirigera vers l'achat de zones dans le conflit.
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="space-y-4 animate-in fade-in slide-in-from-left-4 duration-300">
+                                <h3 className="text-gray-400 text-xs font-semibold tracking-wider uppercase mb-4">
+                                    Missions Disponibles
+                                </h3>
+
+                                {/* Mission Card */}
+                                <div
+                                    onClick={() => setMissionView('details')}
+                                    className="group bg-gray-900/40 border border-gray-800 hover:border-red-500/50 rounded-xl p-4 transition-all duration-300 cursor-pointer hover:bg-gray-900/60 relative overflow-hidden"
+                                >
+                                    <div className="absolute top-0 right-0 p-2 opacity-10 group-hover:opacity-20 transition-opacity">
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-24 w-24 text-red-500" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fillRule="evenodd" d="M3 6a3 3 0 013-3h10a1 1 0 01.8 1.6L14.25 8l2.55 4.4A1 1 0 0116 14H6a1 1 0 01-1-1V6zm5.5 1.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zM5 11.5a1.5 1.5 0 100-3 1.5 1.5 0 000 3zm3.5 1.5a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z" clipRule="evenodd" />
+                                        </svg>
+                                    </div>
+
+                                    <div className="relative z-10">
+                                        <div className="flex justify-between items-start mb-2">
+                                            <h4 className="text-white font-bold text-lg group-hover:text-red-400 transition-colors">
+                                                Conflit Saharien
+                                            </h4>
+                                            <span className="bg-red-900/30 text-red-400 text-[10px] font-bold px-2 py-1 rounded-full border border-red-500/20">
+                                                URGENT
+                                            </span>
+                                        </div>
+                                        <p className="text-gray-400 text-xs mb-4 line-clamp-2">
+                                            Participez à la résolution du conflit en sécurisant des zones stratégiques.
+                                        </p>
+
+                                        <div className="flex items-center space-x-4">
+                                            <div className="flex-1">
+                                                <div className="flex justify-between text-[10px] mb-1">
+                                                    <span className="text-gray-500">Progression</span>
+                                                    <span className="text-red-400 font-mono">65%</span>
+                                                </div>
+                                                <div className="w-full bg-gray-800 rounded-full h-1.5">
+                                                    <div className="bg-red-500 h-full rounded-full" style={{ width: '65%' }}></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 )}
 

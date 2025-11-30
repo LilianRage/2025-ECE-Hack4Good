@@ -6,6 +6,9 @@ export const fetchTiles = async (bbox, filterDate) => {
         if (filterDate) {
             params.append('filterDate', filterDate);
         }
+        // Cache busting
+        params.append('_t', Date.now());
+
         const queryParams = params.toString();
         const response = await fetch(`${API_URL}/tiles?${queryParams}`);
         if (!response.ok) {
@@ -61,5 +64,18 @@ export const confirmTile = async (h3Index, txHash, userWallet) => {
     } catch (error) {
         console.error('Error confirming tile:', error);
         throw error;
+    }
+};
+
+export const getTile = async (h3Index) => {
+    try {
+        const response = await fetch(`${API_URL}/tile/${h3Index}?_t=${Date.now()}`);
+        if (!response.ok) {
+            throw new Error('Failed to fetch tile');
+        }
+        return await response.json();
+    } catch (error) {
+        console.error('Error fetching tile:', error);
+        return null;
     }
 };

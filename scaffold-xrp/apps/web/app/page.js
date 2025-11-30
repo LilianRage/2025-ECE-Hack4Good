@@ -7,7 +7,13 @@ import { DashboardPanel } from "../components/DashboardPanel";
 
 export default function Home() {
   const [selectedTile, setSelectedTile] = useState(null);
+  const [isConflictZone, setIsConflictZone] = useState(false);
   const earthGlobeRef = useRef(null);
+
+  const handleTileSelected = (tileId, isConflict) => {
+    setSelectedTile(tileId);
+    setIsConflictZone(isConflict);
+  };
 
   const handleRefreshTiles = (tileId) => {
     if (earthGlobeRef.current) {
@@ -21,7 +27,7 @@ export default function Home() {
       <div className="absolute inset-0 z-0">
         <EarthGlobe
           ref={earthGlobeRef}
-          onTileSelected={setSelectedTile}
+          onTileSelected={handleTileSelected}
         />
       </div>
 
@@ -34,6 +40,7 @@ export default function Home() {
       <div className="absolute top-24 right-12 bottom-4 w-[400px] z-50">
         <DashboardPanel
           selectedTile={selectedTile}
+          isConflictZone={isConflictZone}
           onRefreshTiles={handleRefreshTiles}
         />
       </div>

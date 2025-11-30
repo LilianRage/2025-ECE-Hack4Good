@@ -41,9 +41,9 @@ export const EarthGlobe = forwardRef(({ onTileSelected }, ref) => {
             if (event.origin !== "http://localhost:5173") return;
 
             if (event.data?.type === 'TILE_SELECTED') {
-                console.log("Parent received tile selection:", event.data.h3Index);
+                console.log("Parent received tile selection:", event.data.h3Index, "Is Conflict:", event.data.isConflictZone);
                 if (onTileSelected) {
-                    onTileSelected(event.data.h3Index);
+                    onTileSelected(event.data.h3Index, event.data.isConflictZone);
                 }
             }
 
