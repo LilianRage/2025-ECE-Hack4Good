@@ -6,7 +6,7 @@ import { lockTile, confirmTile, fetchUserTiles } from "../services/api";
 
 
 export function DashboardPanel({ selectedTile, onRefreshTiles, isConflictZone }) {
-    const [activeTab, setActiveTab] = useState("ma terre");
+    const [activeTab, setActiveTab] = useState("my lands");
     const [missionView, setMissionView] = useState('list'); // 'list' or 'details'
     const { accountInfo, walletManager } = useWallet();
     const [isProcessing, setIsProcessing] = useState(false);
@@ -123,7 +123,7 @@ export function DashboardPanel({ selectedTile, onRefreshTiles, isConflictZone })
         };
 
         // Reload when tab changes or ownedNfts updates
-        if (activeTab === "ma terre") {
+        if (activeTab === "my lands") {
             loadUserTiles();
         }
     }, [accountInfo, activeTab, ownedNfts]);
@@ -131,7 +131,7 @@ export function DashboardPanel({ selectedTile, onRefreshTiles, isConflictZone })
     // Switch to "acheter une zone" when a tile is selected from map
     useEffect(() => {
         if (selectedTile && !isConflictZone) {
-            setActiveTab("acheter une zone");
+            setActiveTab("buy zone");
             setSelectedOwnedTile(null); // Close details if map selection happens
         } else if (isConflictZone) {
             setActiveTab("collaboration");
@@ -157,7 +157,7 @@ export function DashboardPanel({ selectedTile, onRefreshTiles, isConflictZone })
                 const dateObj = new Date(purchaseDate);
                 // Ensure future date for Escrow
                 if (dateObj <= new Date()) {
-                    throw new Error("Pour un achat programmé, la date doit être dans le futur.");
+                    throw new Error("For a scheduled purchase, the date must be in the future.");
                 }
                 gameDateIso = dateObj.toISOString();
             }
@@ -297,7 +297,7 @@ export function DashboardPanel({ selectedTile, onRefreshTiles, isConflictZone })
 
 
             console.log(`Tile ${selectedTile} purchased successfully!`);
-            setActiveTab("ma terre"); // Switch back to my land or stay?
+            setActiveTab("my lands"); // Switch back to my land or stay?
 
         } catch (error) {
             console.error(error);
@@ -349,7 +349,7 @@ export function DashboardPanel({ selectedTile, onRefreshTiles, isConflictZone })
                     setSelectedOwnedTile(updatedTile); // Update the view
                     offerId = updatedTile.metadata.nftOfferId;
                 } else {
-                    alert("L'offre NFT est en cours de création. Veuillez réessayer dans quelques secondes.");
+                    alert("The NFT offer is being created. Please try again in a few seconds.");
                     setIsProcessing(false); // Reset processing state before returning
                     return;
                 }
@@ -394,14 +394,14 @@ export function DashboardPanel({ selectedTile, onRefreshTiles, isConflictZone })
         <div className="w-full h-full bg-black/5 backdrop-blur-md border border-white/10 rounded-xl p-4 flex flex-col transition-all duration-300 relative overflow-hidden">
             {/* Tabs */}
             <div className="flex space-x-1 bg-gray-900/50 p-1 rounded-lg mb-6">
-                {["ma terre", "collaboration", "acheter une zone"].map((tab) => (
+                {["my lands", "collaboration", "buy zone"].map((tab) => (
                     <button
                         key={tab}
                         onClick={() => {
                             setActiveTab(tab);
                             setSelectedOwnedTile(null);
                         }}
-                        className={`flex-1 py-2 px-4 text-sm font-medium rounded-md transition-all duration-200 ${activeTab === tab
+                        className={`flex-1 py-2 px-4 text-sm font-medium rounded-md transition-all duration-200 capitalize ${activeTab === tab
                             ? "bg-cyan-400 text-black shadow-lg shadow-cyan-400/20"
                             : "text-gray-400 hover:text-white hover:bg-white/5"
                             }`}
@@ -413,7 +413,7 @@ export function DashboardPanel({ selectedTile, onRefreshTiles, isConflictZone })
 
             {/* Content */}
             <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
-                {activeTab === "ma terre" && (
+                {activeTab === "my lands" && (
                     <>
                         {selectedOwnedTile ? (
                             <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300 h-full flex flex-col">
@@ -429,7 +429,7 @@ export function DashboardPanel({ selectedTile, onRefreshTiles, isConflictZone })
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                                         </svg>
                                     </div>
-                                    <span className="text-sm font-medium">Retour à la liste</span>
+                                    <span className="text-sm font-medium">Back to list</span>
                                 </button>
 
                                 <div className="bg-black/20 backdrop-blur-md border border-white/5 rounded-2xl overflow-hidden flex-1 flex flex-col shadow-2xl">
@@ -458,13 +458,13 @@ export function DashboardPanel({ selectedTile, onRefreshTiles, isConflictZone })
                                         {/* Primary Info Grid */}
                                         <div className="grid grid-cols-2 gap-4">
                                             <div className="bg-white/5 rounded-xl p-3 border border-white/5">
-                                                <label className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1 block">Date d'acquisition</label>
+                                                <label className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1 block">Acquisition Date</label>
                                                 <p className="text-gray-200 font-medium text-sm">
                                                     {new Date(selectedOwnedTile.gameDate).toLocaleDateString()}
                                                 </p>
                                             </div>
                                             <div className="bg-white/5 rounded-xl p-3 border border-white/5">
-                                                <label className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1 block">Valeur</label>
+                                                <label className="text-[10px] text-gray-500 uppercase font-bold tracking-wider mb-1 block">Value</label>
                                                 <p className="text-white font-bold text-sm">
                                                     {selectedOwnedTile.metadata?.pricePaid ? parseInt(selectedOwnedTile.metadata.pricePaid) / 1000000 : '1.14'} XRP
                                                 </p>
@@ -478,14 +478,14 @@ export function DashboardPanel({ selectedTile, onRefreshTiles, isConflictZone })
                                                     <div className="flex items-center mb-2">
                                                         <span className="w-2 h-2 rounded-full bg-yellow-500 mr-2 animate-pulse"></span>
                                                         <h4 className="text-yellow-500 font-bold text-sm uppercase tracking-wider">
-                                                            Escrow en cours
+                                                            Escrow in Progress
                                                         </h4>
                                                     </div>
                                                     <p className="text-xs text-gray-400 mb-3 leading-relaxed">
-                                                        Le paiement est verrouillé jusqu'à la date de libération.
+                                                        Payment is locked until the release date.
                                                     </p>
                                                     <div className="bg-black/20 rounded-lg px-3 py-2 border border-white/5 flex justify-between items-center">
-                                                        <span className="text-[10px] text-gray-500 uppercase font-bold">Libération</span>
+                                                        <span className="text-[10px] text-gray-500 uppercase font-bold">Release</span>
                                                         <span className="text-xs text-yellow-200 font-mono">
                                                             {new Date(selectedOwnedTile.metadata.finishAfter * 1000 + new Date("2000-01-01T00:00:00Z").getTime()).toLocaleString()}
                                                         </span>
@@ -496,11 +496,11 @@ export function DashboardPanel({ selectedTile, onRefreshTiles, isConflictZone })
                                                     <div className="flex items-center mb-2">
                                                         <span className="w-2 h-2 rounded-full bg-green-500 mr-2"></span>
                                                         <h4 className="text-green-500 font-bold text-sm uppercase tracking-wider">
-                                                            Propriété Certifiée
+                                                            Certified Ownership
                                                         </h4>
                                                     </div>
                                                     <p className="text-xs text-gray-400 mb-3">
-                                                        Ce NFT est sécurisé dans votre wallet.
+                                                        This NFT is secured in your wallet.
                                                     </p>
                                                     <a
                                                         href={`https://testnet.xrpl.org/nft/${selectedOwnedTile.metadata.nftId}`}
@@ -508,7 +508,7 @@ export function DashboardPanel({ selectedTile, onRefreshTiles, isConflictZone })
                                                         rel="noopener noreferrer"
                                                         className="flex items-center justify-center w-full py-2 bg-green-500/20 hover:bg-green-500/30 text-green-400 text-xs font-bold rounded-lg transition-colors"
                                                     >
-                                                        Voir sur l'explorateur
+                                                        View on Explorer
                                                         <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                                                         </svg>
@@ -527,14 +527,14 @@ export function DashboardPanel({ selectedTile, onRefreshTiles, isConflictZone })
                                                                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                                                                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                                                 </svg>
-                                                                Traitement...
+                                                                Processing...
                                                             </span>
                                                         ) : (
-                                                            "Réclamer mon NFT"
+                                                            "Claim my NFT"
                                                         )}
                                                     </button>
                                                     <p className="text-[10px] text-center text-gray-500">
-                                                        Une transaction sera initiée pour transférer le NFT vers votre wallet.
+                                                        A transaction will be initiated to transfer the NFT to your wallet.
                                                     </p>
                                                 </div>
                                             )}
@@ -546,7 +546,7 @@ export function DashboardPanel({ selectedTile, onRefreshTiles, isConflictZone })
                                                 onClick={() => setShowAdvancedDetails(!showAdvancedDetails)}
                                                 className="flex items-center justify-between w-full py-2 text-xs font-medium text-gray-500 hover:text-gray-300 transition-colors"
                                             >
-                                                <span>Détails Techniques</span>
+                                                <span>Technical Details</span>
                                                 <svg
                                                     xmlns="http://www.w3.org/2000/svg"
                                                     className={`h-4 w-4 transition-transform duration-300 ${showAdvancedDetails ? 'rotate-180' : ''}`}
@@ -604,7 +604,7 @@ export function DashboardPanel({ selectedTile, onRefreshTiles, isConflictZone })
                                         >
                                             <h3 className="text-purple-400 text-xs font-semibold tracking-wider uppercase flex items-center">
                                                 <span className="w-2 h-2 bg-purple-400 rounded-full mr-2 animate-pulse"></span>
-                                                EN ATTENTE / À RÉCLAMER
+                                                PENDING / TO CLAIM
                                             </h3>
                                             <div className={`text-purple-400 transition-transform duration-300 ${expandedSections.future ? 'rotate-180' : ''}`}>
                                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -634,11 +634,11 @@ export function DashboardPanel({ selectedTile, onRefreshTiles, isConflictZone })
                                                                 <h4 className="text-gray-200 font-medium text-sm">Zone {tile._id.substring(0, 8)}...</h4>
                                                                 {tile.status === 'PROCESSING' ? (
                                                                     <p className="text-gray-500 text-xs mt-0.5">
-                                                                        Libération : {new Date(tile.metadata.finishAfter * 1000 + new Date("2000-01-01T00:00:00Z").getTime()).toLocaleDateString()}
+                                                                        Release : {new Date(tile.metadata.finishAfter * 1000 + new Date("2000-01-01T00:00:00Z").getTime()).toLocaleDateString()}
                                                                     </p>
                                                                 ) : (
                                                                     <p className="text-gray-500 text-xs mt-0.5">
-                                                                        Prêt à réclamer
+                                                                        Ready to claim
                                                                     </p>
                                                                 )}
                                                             </div>
@@ -665,7 +665,7 @@ export function DashboardPanel({ selectedTile, onRefreshTiles, isConflictZone })
                                     >
                                         <h3 className="text-cyan-400 text-xs font-semibold tracking-wider uppercase flex items-center">
                                             <span className="w-2 h-2 bg-cyan-400 rounded-full mr-2 animate-pulse"></span>
-                                            TUILES ACTIVES
+                                            ACTIVE TILES
                                         </h3>
                                         <div className={`text-cyan-400 transition-transform duration-300 ${expandedSections.active ? 'rotate-180' : ''}`}>
                                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -677,7 +677,7 @@ export function DashboardPanel({ selectedTile, onRefreshTiles, isConflictZone })
                                     {expandedSections.active && (
                                         <div className="space-y-3 animate-in fade-in slide-in-from-top-2 duration-200">
                                             {activeTiles.length === 0 ? (
-                                                <p className="text-gray-600 text-xs italic text-center py-4">Aucune tuile active</p>
+                                                <p className="text-gray-600 text-xs italic text-center py-4">No active tiles</p>
                                             ) : (
                                                 activeTiles.map((tile) => (
                                                     <div
@@ -730,7 +730,7 @@ export function DashboardPanel({ selectedTile, onRefreshTiles, isConflictZone })
                                     {expandedSections.archive && (
                                         <div className="space-y-3 opacity-75 hover:opacity-100 transition-opacity animate-in fade-in slide-in-from-top-2 duration-200">
                                             {archiveTiles.length === 0 ? (
-                                                <p className="text-gray-600 text-xs italic text-center py-4">Aucune archive</p>
+                                                <p className="text-gray-600 text-xs italic text-center py-4">No archives</p>
                                             ) : (
                                                 archiveTiles.map((tile) => (
                                                     <div
@@ -779,14 +779,14 @@ export function DashboardPanel({ selectedTile, onRefreshTiles, isConflictZone })
                                     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                                     </svg>
-                                    Retour aux missions
+                                    Back to missions
                                 </button>
 
                                 <div className="bg-black/20 backdrop-blur-md border border-white/5 rounded-2xl p-6 shadow-xl">
                                     <div className="flex justify-between items-start mb-6">
                                         <div>
-                                            <h3 className="text-white font-bold text-xl mb-1">Conflit Saharien</h3>
-                                            <p className="text-gray-500 font-medium text-xs uppercase tracking-wider">Mission Communautaire</p>
+                                            <h3 className="text-white font-bold text-xl mb-1">Sahara Conflict</h3>
+                                            <p className="text-gray-500 font-medium text-xs uppercase tracking-wider">Community Mission</p>
                                         </div>
                                         <div className="bg-white/5 p-2 rounded-lg">
                                             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -799,7 +799,7 @@ export function DashboardPanel({ selectedTile, onRefreshTiles, isConflictZone })
                                         {/* Progress Bar */}
                                         <div>
                                             <div className="flex justify-between items-end mb-2">
-                                                <span className="text-gray-400 text-[10px] uppercase font-bold tracking-wider">Progression de tuiles découverte</span>
+                                                <span className="text-gray-400 text-[10px] uppercase font-bold tracking-wider">Tile Discovery Progress</span>
                                                 <span className="text-white font-mono font-bold text-sm">65%</span>
                                             </div>
                                             <div className="w-full bg-white/5 rounded-full h-2 overflow-hidden">
@@ -809,14 +809,14 @@ export function DashboardPanel({ selectedTile, onRefreshTiles, isConflictZone })
                                                 ></div>
                                             </div>
                                             <p className="text-[10px] text-gray-600 mt-2 text-right">
-                                                Objectif: 100% pour débloquer la zone
+                                                Goal: 100% to unlock the zone
                                             </p>
                                         </div>
 
                                         {/* Stats Grid */}
                                         <div className="grid grid-cols-2 gap-4">
                                             <div className="bg-white/5 rounded-xl p-4 border border-white/5">
-                                                <p className="text-gray-500 text-[10px] uppercase font-bold tracking-wider mb-1">XRPL Dépensés</p>
+                                                <p className="text-gray-500 text-[10px] uppercase font-bold tracking-wider mb-1">XRPL Spent</p>
                                                 <p className="text-xl font-bold text-white">
                                                     30 XRP
                                                 </p>
@@ -831,13 +831,13 @@ export function DashboardPanel({ selectedTile, onRefreshTiles, isConflictZone })
 
                                         <div className="pt-2">
                                             <button
-                                                onClick={() => setActiveTab("acheter une zone")}
+                                                onClick={() => setActiveTab("buy zone")}
                                                 className="w-full py-3 rounded-xl bg-white text-black font-bold text-sm hover:bg-gray-200 transition-colors shadow-lg active:scale-[0.98] transform duration-100"
                                             >
-                                                Contribuer à la Mission
+                                                Contribute to Mission
                                             </button>
                                             <p className="text-[10px] text-gray-600 mt-3 text-center">
-                                                Cela vous redirigera vers l'achat de zones dans le conflit.
+                                                This will redirect you to buy zones in the conflict.
                                             </p>
                                         </div>
                                     </div>
@@ -846,7 +846,7 @@ export function DashboardPanel({ selectedTile, onRefreshTiles, isConflictZone })
                         ) : (
                             <div className="space-y-4 animate-in fade-in slide-in-from-left-4 duration-300">
                                 <h3 className="text-gray-400 text-xs font-semibold tracking-wider uppercase mb-4">
-                                    Missions Disponibles
+                                    Available Missions
                                 </h3>
 
                                 {/* Mission Card */}
@@ -863,20 +863,20 @@ export function DashboardPanel({ selectedTile, onRefreshTiles, isConflictZone })
                                     <div className="relative z-10">
                                         <div className="flex justify-between items-start mb-2">
                                             <h4 className="text-white font-bold text-lg group-hover:text-red-400 transition-colors">
-                                                Conflit Saharien
+                                                Sahara Conflict
                                             </h4>
                                             <span className="bg-red-900/30 text-red-400 text-[10px] font-bold px-2 py-1 rounded-full border border-red-500/20">
                                                 URGENT
                                             </span>
                                         </div>
                                         <p className="text-gray-400 text-xs mb-4 line-clamp-2">
-                                            Participez à la résolution du conflit en sécurisant des zones stratégiques.
+                                            Participate in conflict resolution by securing strategic zones.
                                         </p>
 
                                         <div className="flex items-center space-x-4">
                                             <div className="flex-1">
                                                 <div className="flex justify-between text-[10px] mb-1">
-                                                    <span className="text-gray-500">Progression</span>
+                                                    <span className="text-gray-500">Progress</span>
                                                     <span className="text-red-400 font-mono">65%</span>
                                                 </div>
                                                 <div className="w-full bg-gray-800 rounded-full h-1.5">
@@ -891,12 +891,12 @@ export function DashboardPanel({ selectedTile, onRefreshTiles, isConflictZone })
                     </div>
                 )}
 
-                {activeTab === "acheter une zone" && (
+                {activeTab === "buy zone" && (
                     <div className="h-full flex flex-col">
                         {selectedTile ? (
                             <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
                                 <div className="bg-gray-900/40 border border-gray-800 rounded-xl p-4">
-                                    <h3 className="text-white font-bold text-lg mb-1">Zone Sélectionnée</h3>
+                                    <h3 className="text-white font-bold text-lg mb-1">Selected Zone</h3>
                                     <p className="text-cyan-400 font-mono text-sm">{selectedTile}</p>
                                 </div>
 
@@ -909,7 +909,7 @@ export function DashboardPanel({ selectedTile, onRefreshTiles, isConflictZone })
                                             : "text-gray-400 hover:text-white hover:bg-white/5"
                                             }`}
                                     >
-                                        Immédiat
+                                        Instant
                                     </button>
                                     <button
                                         onClick={() => setPurchaseMode("future")}
@@ -918,7 +918,7 @@ export function DashboardPanel({ selectedTile, onRefreshTiles, isConflictZone })
                                             : "text-gray-400 hover:text-white hover:bg-white/5"
                                             }`}
                                     >
-                                        Programmé
+                                        Scheduled
                                     </button>
                                 </div>
 
@@ -926,7 +926,7 @@ export function DashboardPanel({ selectedTile, onRefreshTiles, isConflictZone })
                                     {purchaseMode === "future" && (
                                         <div className="animate-in fade-in slide-in-from-top-2">
                                             <label className="block text-purple-400 text-xs uppercase font-bold mb-2">
-                                                Date de déclenchement (Escrow)
+                                                Trigger Date (Escrow)
                                             </label>
                                             <input
                                                 type="datetime-local"
@@ -935,7 +935,7 @@ export function DashboardPanel({ selectedTile, onRefreshTiles, isConflictZone })
                                                 className="w-full bg-black/20 border border-purple-500/30 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500 transition-colors"
                                             />
                                             <p className="text-[10px] text-gray-500 mt-1">
-                                                Les fonds seront bloqués jusqu'à cette date. Le NFT sera généré automatiquement.
+                                                Funds will be locked until this date. The NFT will be generated automatically.
                                             </p>
                                         </div>
                                     )}
@@ -943,18 +943,18 @@ export function DashboardPanel({ selectedTile, onRefreshTiles, isConflictZone })
                                     {purchaseMode === "instant" && (
                                         <div className="animate-in fade-in slide-in-from-top-2">
                                             <p className="text-xs text-gray-400 italic">
-                                                Achat immédiat. Le NFT sera généré et transféré tout de suite.
+                                                Instant purchase. The NFT will be generated and transferred immediately.
                                             </p>
                                         </div>
                                     )}
 
                                     <div className="bg-gray-900/20 rounded-lg p-4 border border-gray-800">
                                         <div className="flex justify-between items-center mb-2">
-                                            <span className="text-gray-400 text-sm">Prix</span>
+                                            <span className="text-gray-400 text-sm">Price</span>
                                             <span className="text-white font-bold">1.14 XRP</span>
                                         </div>
                                         <div className="flex justify-between items-center">
-                                            <span className="text-gray-400 text-sm">Frais estimés</span>
+                                            <span className="text-gray-400 text-sm">Estimated Fees</span>
                                             <span className="text-gray-500 text-sm">~0.000012 XRP</span>
                                         </div>
                                     </div>
@@ -975,14 +975,14 @@ export function DashboardPanel({ selectedTile, onRefreshTiles, isConflictZone })
                                                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                                                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                                 </svg>
-                                                Traitement...
+                                                Processing...
                                             </span>
                                         ) : !accountInfo?.address ? (
-                                            "Connectez votre wallet"
+                                            "Connect your wallet"
                                         ) : (
                                             purchaseMode === "instant"
-                                                ? "Acheter Maintenant (1.14 XRP)"
-                                                : "Programmer l'Achat (1.14 XRP)"
+                                                ? "Buy Now (1.14 XRP)"
+                                                : "Schedule Purchase (1.14 XRP)"
                                         )}
                                     </button>
                                 </div>
@@ -992,7 +992,7 @@ export function DashboardPanel({ selectedTile, onRefreshTiles, isConflictZone })
                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mb-4 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                                 </svg>
-                                <p>Sélectionnez une zone sur la carte pour voir les détails et l'acheter</p>
+                                <p>Select a zone on the map to view details and buy it</p>
                             </div>
                         )}
                     </div>
