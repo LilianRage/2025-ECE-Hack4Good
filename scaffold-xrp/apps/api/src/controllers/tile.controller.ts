@@ -11,7 +11,7 @@ import { Client, Wallet, convertStringToHex } from 'xrpl';
 const MERCHANT_WALLET = process.env.MERCHANT_WALLET || 'rKfLLRRRNw12Yo5Ysrx6LsVn3BpRGZNX1v';
 // TESTNET SEED - For demo purposes only. In production, use secure env var.
 const MERCHANT_SEED = process.env.MERCHANT_SEED || 'sEdSjbWAYaByvWkn7wxv8gLNhsopDdk';
-const TILE_PRICE_DROPS = '100000'; // 0.1 XRP
+const TILE_PRICE_DROPS = '1140000'; // 1.14 XRP
 const XRPL_NET = 'wss://s.altnet.rippletest.net:51233';
 
 export const lockTile = async (req: Request, res: Response) => {
