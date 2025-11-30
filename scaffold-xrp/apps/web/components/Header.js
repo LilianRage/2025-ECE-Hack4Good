@@ -9,13 +9,16 @@ export function Header() {
   const { statusMessage } = useWallet();
 
   return (
-    <header className="bg-transparent border-none py-6 absolute top-0 left-0 w-full z-50 pointer-events-none">
-      <div className="container mx-auto px-12">
+    <header className="bg-transparent border-none pt-12 pb-6 absolute top-0 left-0 w-full z-50 pointer-events-none">
+      <div className="w-full px-6">
         <div className="flex items-center justify-between pointer-events-auto">
           {/* Logo */}
-          <div className="flex items-center">
-            <span className="text-white font-bold text-3xl tracking-tight">
+          <div className="flex flex-col items-center">
+            <span className="text-white font-bold text-7xl tracking-tight leading-none">
               a<span className="text-[#60d5f5]">X</span>es.
+            </span>
+            <span className="text-gray-300 text-xs tracking-widest mt-1 ml-1 uppercase opacity-80">
+              Decentralized Earth Observation System
             </span>
           </div>
 

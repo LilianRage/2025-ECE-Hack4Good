@@ -4,6 +4,7 @@ import * as Cesium from 'cesium';
 import * as h3 from 'h3-js';
 import 'cesium/Build/Cesium/Widgets/widgets.css';
 import { fetchTiles, lockTile, confirmTile } from '../services/api';
+import { DateTimePicker } from './DateTimePicker';
 
 const GlobeViewer = () => {
     const containerRef = useRef(null);
@@ -54,6 +55,28 @@ const GlobeViewer = () => {
         loadTiles();
     }, [loadTiles]);
 
+
+
+    // Refs for state access inside callbacks
+    const selectedH3IndexRef = useRef(selectedH3Index);
+    const tilesPrimitivesRef = useRef([]); // Track tile primitives for cleanup
+
+    // Sync ref with state
+    useEffect(() => {
+        selectedH3IndexRef.current = selectedH3Index;
+    }, [selectedH3Index]);
+
+    // Idle Animation Constants
+    const lastInteractionTime = useRef(Date.now());
+    const IDLE_TIMEOUT = 3000;
+    const TARGET_HEIGHT = 20000000;
+    const ROTATION_SPEED = 0.0005;
+
+    const resetIdleTimer = useCallback(() => {
+        lastInteractionTime.current = Date.now();
+    }, []);
+
+    // 1. Viewer Initialization Effect (Runs ONCE)
     useEffect(() => {
         if (!containerRef.current) return;
 
@@ -67,11 +90,11 @@ const GlobeViewer = () => {
             homeButton: false,
             infoBox: false,
             sceneModePicker: false,
-            selectionIndicator: true, // Keep true to avoid "undefined" errors, hide manually
+            selectionIndicator: true,
             timeline: false,
             navigationHelpButton: false,
             navigationInstructionsInitiallyVisible: false,
-            creditContainer: document.createElement('div'), // Hide credits or move them
+            creditContainer: document.createElement('div'),
             contextOptions: {
                 webgl: {
                     alpha: true,
@@ -80,242 +103,72 @@ const GlobeViewer = () => {
         });
         viewerRef.current = viewer;
 
-        // Theme: Deep Space / Futuristic (Black Background)
+        // Theme
         viewer.scene.skyBox.show = false;
         viewer.scene.sun.show = false;
         viewer.scene.moon.show = false;
         viewer.scene.skyAtmosphere.show = false;
-        viewer.scene.backgroundColor = Cesium.Color.BLACK;
+        viewer.scene.backgroundColor = Cesium.Color.TRANSPARENT;
 
-        // Manually hide selection indicator
         if (viewer.selectionIndicator) {
-            // We hide the container or the element
             const indicator = viewer.selectionIndicator.viewModel.selectionIndicatorElement;
-            if (indicator) {
-                indicator.style.display = 'none';
-            }
+            if (indicator) indicator.style.display = 'none';
         }
 
-        // --- H3 Integration ---
-
-        // Generate global hexagons at Resolution 3 (approx 41,162 cells)
-        const res0Cells = h3.getRes0Cells();
-        const allHexagons = res0Cells.flatMap(res0 => h3.cellToChildren(res0, 3));
-
-        // Create instances for the Primitive API
-        const instances = [];
-        const outlineInstances = [];
-
-        // --- CONFLICT ZONE DEMO ---
-        // Target Tile: 835962fffffffff (Africa)
-        const targetHex = '835962fffffffff';
-        const [targetLat, targetLon] = h3.cellToLatLng(targetHex); // Returns [lat, lon]
-
-        // Calculate Conflict Zone Tiles (k-ring 4)
-        const conflictZoneHexes = h3.gridDisk(targetHex, 4);
-        const conflictZoneSet = new Set(conflictZoneHexes);
-
-        // Fly to the target
-        // Fly to the target with an offset to center it in the visible area (left of the menu)
-        // We shift the camera target to the RIGHT (East) so the Earth appears to the LEFT
-        viewer.camera.flyTo({
-            destination: Cesium.Cartesian3.fromDegrees(targetLon + 25, targetLat, 12000000),
-        });
-
-        // Add Label (Keep label, remove polygon overlay)
-        viewer.entities.add({
-            id: 'conflict-zone-label',
-            position: Cesium.Cartesian3.fromDegrees(targetLon, targetLat, 100000), // Above the zone
-            label: {
-                text: 'ZONE DE CONFLIT\nMISSION COMMUNAUTAIRE',
-                font: 'bold 16px Inter, sans-serif',
-                fillColor: Cesium.Color.WHITE,
-                outlineColor: Cesium.Color.BLACK,
-                outlineWidth: 4,
-                style: Cesium.LabelStyle.FILL_AND_OUTLINE,
-                verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-                pixelOffset: new Cesium.Cartesian2(0, -20),
-                distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 10000000)
-            }
-        });
-        // --------------------------
-
-        // Fog of War Colors
-        const baseColor = Cesium.Color.BLACK.withAlpha(0.85); // Obscured (Fog)
-        const lockedColor = Cesium.Color.RED.withAlpha(0.5); // Locked
-        const ownedColor = Cesium.Color.WHITE.withAlpha(0.01); // Nearly transparent for picking
-        const outlineColor = Cesium.Color.WHITE.withAlpha(0.1); // Faint outline
-        const conflictOutlineColor = Cesium.Color.RED.withAlpha(0.8); // Red outline for conflict zone
-
-        // Clear previous entities (important for re-renders)
-        viewer.entities.removeAll();
-
-        allHexagons.forEach((h3Index) => {
-            // Skip pentagons
-            if (h3.isPentagon(h3Index)) return;
-
-            const boundary = h3.cellToBoundary(h3Index);
-
-            // Filter 1: Check for IDL crossing
-            let crossesIDL = false;
-            for (let i = 0; i < boundary.length; i++) {
-                const lon = boundary[i][1];
-                const nextLon = boundary[(i + 1) % boundary.length][1];
-                if (Math.abs(lon - nextLon) > 180) {
-                    crossesIDL = true;
-                    break;
-                }
-            }
-            if (crossesIDL) return;
-
-            // Filter 2: Remove duplicate points
-            const uniquePositions = [];
-            const seen = new Set();
-
-            boundary.forEach(([lat, lon]) => {
-                const key = `${lat},${lon}`;
-                if (!seen.has(key)) {
-                    seen.add(key);
-                    uniquePositions.push(lon, lat); // Cesium expects [lon, lat]
-                }
-            });
-
-            // Filter 3: Ensure at least 3 points
-            if (uniquePositions.length < 6) return;
-
-            const polygonHierarchy = new Cesium.PolygonHierarchy(
-                Cesium.Cartesian3.fromDegreesArray(uniquePositions)
-            );
-
-            // Determine color based on status
-            const tileData = lockedTiles.get(h3Index);
-
-            // SPECIAL CASE: Owned Tile with Image -> Render as Entity
-            if (tileData && tileData.status === 'OWNED' && tileData.metadata && tileData.metadata.imageUrl) {
-                viewer.entities.add({
-                    id: h3Index, // Important for picking
-                    polygon: {
-                        hierarchy: polygonHierarchy,
-                        material: new Cesium.ImageMaterialProperty({
-                            image: tileData.metadata.imageUrl,
-                            transparent: false
-                        }),
-                        height: 0,
-                        outline: true,
-                        outlineColor: conflictZoneSet.has(h3Index) ? conflictOutlineColor : outlineColor
-                    }
-                });
-                return; // Skip adding to primitive batch
-            }
-
-            // Standard Primitive Rendering (Fog / Locked / Transparent)
-            let color = baseColor; // Default: Obscured
-
-            if (tileData) {
-                if (tileData.status === 'OWNED') {
-                    color = ownedColor; // Reveal Map (Transparent/Invisible)
-                } else if (tileData.status === 'LOCKED') {
-                    color = lockedColor; // Locked
-                }
-            }
-
-            // Fill Instance
-            instances.push(new Cesium.GeometryInstance({
-                geometry: new Cesium.PolygonGeometry({
-                    polygonHierarchy: polygonHierarchy,
-                    height: 0,
-                }),
-                attributes: {
-                    color: Cesium.ColorGeometryInstanceAttribute.fromColor(color),
-                },
-                id: h3Index,
-            }));
-
-            // Outline Instance
-            // Check if in conflict zone
-            const isConflictZone = conflictZoneSet.has(h3Index);
-
-            outlineInstances.push(new Cesium.GeometryInstance({
-                geometry: new Cesium.PolygonOutlineGeometry({
-                    polygonHierarchy: polygonHierarchy,
-                    height: 0,
-                }),
-                attributes: {
-                    color: Cesium.ColorGeometryInstanceAttribute.fromColor(isConflictZone ? conflictOutlineColor : outlineColor),
-                },
-            }));
-        });
-
-        // Add Fill Primitive
-        const primitive = new Cesium.Primitive({
-            geometryInstances: instances,
-            appearance: new Cesium.PerInstanceColorAppearance({
-                flat: true,
-                translucent: true,
-            }),
-            asynchronous: false,
-        });
-        viewer.scene.primitives.add(primitive);
-
-        // Add Outline Primitive
-        const outlinePrimitive = new Cesium.Primitive({
-            geometryInstances: outlineInstances,
-            appearance: new Cesium.PerInstanceColorAppearance({
-                flat: true,
-                translucent: true,
-            }),
-            asynchronous: false,
-        });
-        viewer.scene.primitives.add(outlinePrimitive);
-
-
-
-        // --- Interaction (Picking) ---
+        // Interaction Handler
         const handler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
 
         handler.setInputAction((movement) => {
+            resetIdleTimer();
             const pickedObject = viewer.scene.pick(movement.position);
             if (Cesium.defined(pickedObject) && typeof pickedObject.id === 'string') {
                 console.log('Clicked H3 Hexagon ID:', pickedObject.id);
                 setSelectedH3Index(pickedObject.id);
-
-                // Send message to parent
-                window.parent.postMessage({
-                    type: 'TILE_SELECTED',
-                    h3Index: pickedObject.id
-                }, '*');
+                window.parent.postMessage({ type: 'TILE_SELECTED', h3Index: pickedObject.id }, '*');
             } else {
                 setSelectedH3Index(null);
-                window.parent.postMessage({
-                    type: 'TILE_SELECTED',
-                    h3Index: null
-                }, '*');
+                window.parent.postMessage({ type: 'TILE_SELECTED', h3Index: null }, '*');
             }
         }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
 
-        // Listen for Refresh Tiles
-        const handleRefresh = (event) => {
-            if (event.data && event.data.type === 'REFRESH_TILES') {
-                console.log("Refreshing tiles...");
-                loadTiles();
+        // Idle Reset Listeners
+        [
+            Cesium.ScreenSpaceEventType.MOUSE_MOVE,
+            Cesium.ScreenSpaceEventType.WHEEL,
+            Cesium.ScreenSpaceEventType.PINCH_START,
+            Cesium.ScreenSpaceEventType.PINCH_MOVE
+        ].forEach(type => handler.setInputAction(resetIdleTimer, type));
+
+        // Idle Animation Loop
+        const onTick = (clock) => {
+            if (viewer.isDestroyed()) return;
+
+            // Use Ref for current selection state to avoid stale closure
+            if (!selectedH3IndexRef.current && Date.now() - lastInteractionTime.current > IDLE_TIMEOUT) {
+                const cameraHeight = viewer.camera.positionCartographic.height;
+                if (cameraHeight < TARGET_HEIGHT) {
+                    const moveAmount = Math.max(10000, (TARGET_HEIGHT - cameraHeight) * 0.05);
+                    viewer.camera.moveBackward(moveAmount);
+                }
+                viewer.camera.rotate(Cesium.Cartesian3.UNIT_Z, ROTATION_SPEED);
             }
-            if (event.data && event.data.type === 'PURCHASE_SUCCESS') {
+        };
+        viewer.clock.onTick.addEventListener(onTick);
+
+        // Message Listener
+        const handleRefresh = (event) => {
+            if (event.data?.type === 'REFRESH_TILES') loadTiles();
+            if (event.data?.type === 'PURCHASE_SUCCESS') {
                 const h3Index = event.data.h3Index;
-                console.log("Animating purchase success for:", h3Index);
+                if (!viewer || viewer.isDestroyed()) return;
 
-                const viewer = viewerRef.current;
-                if (!viewer) return;
-
-                // Create a pulsing effect
                 const boundary = h3.cellToBoundary(h3Index);
                 const positions = [];
                 boundary.forEach(([lat, lon]) => positions.push(lon, lat));
 
                 const entity = viewer.entities.add({
                     polygon: {
-                        hierarchy: new Cesium.PolygonHierarchy(
-                            Cesium.Cartesian3.fromDegreesArray(positions)
-                        ),
+                        hierarchy: new Cesium.PolygonHierarchy(Cesium.Cartesian3.fromDegreesArray(positions)),
                         material: new Cesium.ColorMaterialProperty(
                             new Cesium.CallbackProperty((time) => {
                                 const alpha = (Math.sin(time.secondsOfDay * 5) + 1) / 2 * 0.6 + 0.2;
@@ -329,14 +182,9 @@ const GlobeViewer = () => {
                     }
                 });
 
-                // Remove after 3 seconds
                 setTimeout(() => {
-                    if (viewer && !viewer.isDestroyed()) {
-                        viewer.entities.remove(entity);
-                    }
+                    if (viewer && !viewer.isDestroyed()) viewer.entities.remove(entity);
                 }, 3000);
-
-                // Also reload tiles to show new status
                 loadTiles();
             }
         };
@@ -344,45 +192,178 @@ const GlobeViewer = () => {
 
         // Cleanup
         return () => {
-            handler.destroy();
-            viewer.destroy();
+            if (viewer && !viewer.isDestroyed()) {
+                handler.destroy();
+                viewer.clock.onTick.removeEventListener(onTick);
+                viewer.destroy();
+            }
             window.removeEventListener('message', handleRefresh);
         };
-    }, [lockedTiles, loadTiles]); // Re-render when lockedTiles changes
+    }, []); // Empty dependency array: Runs once on mount
 
-    // Highlight Selected Tile
+    // 2. Tiles Rendering Effect (Runs when lockedTiles changes)
+    useEffect(() => {
+        const viewer = viewerRef.current;
+        if (!viewer || viewer.isDestroyed()) return;
+
+        // Cleanup old primitives
+        tilesPrimitivesRef.current.forEach(p => viewer.scene.primitives.remove(p));
+        tilesPrimitivesRef.current = [];
+        viewer.entities.removeAll(); // Clear entities (labels, images)
+
+        // Re-add Conflict Zone Label
+        const targetHex = '835962fffffffff';
+        const [targetLat, targetLon] = h3.cellToLatLng(targetHex);
+        const conflictZoneHexes = h3.gridDisk(targetHex, 4);
+        const conflictZoneSet = new Set(conflictZoneHexes);
+
+        viewer.entities.add({
+            id: 'conflict-zone-label',
+            position: Cesium.Cartesian3.fromDegrees(targetLon, targetLat, 100000),
+            label: {
+                text: 'ZONE DE CONFLIT\nMISSION COMMUNAUTAIRE',
+                font: 'bold 16px Inter, sans-serif',
+                fillColor: Cesium.Color.WHITE,
+                outlineColor: Cesium.Color.BLACK,
+                outlineWidth: 4,
+                style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+                verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
+                pixelOffset: new Cesium.Cartesian2(0, -20),
+                distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 10000000)
+            }
+        });
+
+        // Generate Primitives
+        const res0Cells = h3.getRes0Cells();
+        const allHexagons = res0Cells.flatMap(res0 => h3.cellToChildren(res0, 3));
+        const instances = [];
+        const outlineInstances = [];
+
+        const baseColor = Cesium.Color.BLACK.withAlpha(0.85);
+        const lockedColor = Cesium.Color.RED.withAlpha(0.5);
+        const ownedColor = Cesium.Color.WHITE.withAlpha(0.01);
+        const outlineColor = Cesium.Color.WHITE.withAlpha(0.1);
+        const conflictOutlineColor = Cesium.Color.RED.withAlpha(0.8);
+
+        allHexagons.forEach((h3Index) => {
+            if (h3.isPentagon(h3Index)) return;
+            const boundary = h3.cellToBoundary(h3Index);
+
+            // IDL Check
+            let crossesIDL = false;
+            for (let i = 0; i < boundary.length; i++) {
+                if (Math.abs(boundary[i][1] - boundary[(i + 1) % boundary.length][1]) > 180) {
+                    crossesIDL = true;
+                    break;
+                }
+            }
+            if (crossesIDL) return;
+
+            const uniquePositions = [];
+            const seen = new Set();
+            boundary.forEach(([lat, lon]) => {
+                const key = `${lat},${lon}`;
+                if (!seen.has(key)) {
+                    seen.add(key);
+                    uniquePositions.push(lon, lat);
+                }
+            });
+            if (uniquePositions.length < 6) return;
+
+            const polygonHierarchy = new Cesium.PolygonHierarchy(Cesium.Cartesian3.fromDegreesArray(uniquePositions));
+            const tileData = lockedTiles.get(h3Index);
+
+            // Image Entity Case
+            if (tileData?.status === 'OWNED' && tileData.metadata?.imageUrl) {
+                viewer.entities.add({
+                    id: h3Index,
+                    polygon: {
+                        hierarchy: polygonHierarchy,
+                        material: new Cesium.ImageMaterialProperty({ image: tileData.metadata.imageUrl, transparent: false }),
+                        height: 0,
+                        outline: true,
+                        outlineColor: conflictZoneSet.has(h3Index) ? conflictOutlineColor : outlineColor
+                    }
+                });
+                return;
+            }
+
+            let color = baseColor;
+            if (tileData?.status === 'OWNED') color = ownedColor;
+            else if (tileData?.status === 'LOCKED') color = lockedColor;
+
+            instances.push(new Cesium.GeometryInstance({
+                geometry: new Cesium.PolygonGeometry({ polygonHierarchy, height: 0 }),
+                attributes: { color: Cesium.ColorGeometryInstanceAttribute.fromColor(color) },
+                id: h3Index,
+            }));
+
+            outlineInstances.push(new Cesium.GeometryInstance({
+                geometry: new Cesium.PolygonOutlineGeometry({ polygonHierarchy, height: 0 }),
+                attributes: { color: Cesium.ColorGeometryInstanceAttribute.fromColor(conflictZoneSet.has(h3Index) ? conflictOutlineColor : outlineColor) },
+            }));
+        });
+
+        if (instances.length > 0) {
+            const primitive = new Cesium.Primitive({
+                geometryInstances: instances,
+                appearance: new Cesium.PerInstanceColorAppearance({ flat: true, translucent: true }),
+                asynchronous: false,
+            });
+            viewer.scene.primitives.add(primitive);
+            tilesPrimitivesRef.current.push(primitive);
+        }
+
+        if (outlineInstances.length > 0) {
+            const outlinePrimitive = new Cesium.Primitive({
+                geometryInstances: outlineInstances,
+                appearance: new Cesium.PerInstanceColorAppearance({ flat: true, translucent: true }),
+                asynchronous: false,
+            });
+            viewer.scene.primitives.add(outlinePrimitive);
+            tilesPrimitivesRef.current.push(outlinePrimitive);
+        }
+
+    }, [lockedTiles]); // Only re-run when tiles change
+
+    // 3. Selection & Highlight Effect
     const highlightPrimitiveRef = useRef(null);
 
     useEffect(() => {
         const viewer = viewerRef.current;
-        if (!viewer) return;
+        if (!viewer || viewer.isDestroyed()) return;
 
-        // Remove previous highlight
+        resetIdleTimer();
+
+        // Highlight Logic
         if (highlightPrimitiveRef.current) {
             viewer.scene.primitives.remove(highlightPrimitiveRef.current);
             highlightPrimitiveRef.current = null;
         }
 
         if (selectedH3Index) {
-            const boundary = h3.cellToBoundary(selectedH3Index);
-            const positions = [];
-            boundary.forEach(([lat, lon]) => {
-                positions.push(lon, lat);
+            // Zoom to Tile Logic
+            const [lat, lon] = h3.cellToLatLng(selectedH3Index);
+            viewer.camera.flyTo({
+                destination: Cesium.Cartesian3.fromDegrees(lon, lat, 5000000), // Zoom to 5000km
+                duration: 1.5,
+                easingFunction: Cesium.EasingFunction.QUADRATIC_IN_OUT
             });
 
+            // Draw Highlight
+            const boundary = h3.cellToBoundary(selectedH3Index);
+            const positions = [];
+            boundary.forEach(([lat, lon]) => positions.push(lon, lat));
+
             const geometry = new Cesium.PolygonOutlineGeometry({
-                polygonHierarchy: new Cesium.PolygonHierarchy(
-                    Cesium.Cartesian3.fromDegreesArray(positions)
-                ),
-                height: 100, // Slightly raised to avoid z-fighting
+                polygonHierarchy: new Cesium.PolygonHierarchy(Cesium.Cartesian3.fromDegreesArray(positions)),
+                height: 100,
                 extrudedHeight: 100,
             });
 
             const instance = new Cesium.GeometryInstance({
                 geometry: geometry,
-                attributes: {
-                    color: Cesium.ColorGeometryInstanceAttribute.fromColor(Cesium.Color.CYAN),
-                },
+                attributes: { color: Cesium.ColorGeometryInstanceAttribute.fromColor(Cesium.Color.CYAN) },
                 id: 'highlight-outline',
             });
 
@@ -390,9 +371,7 @@ const GlobeViewer = () => {
                 geometryInstances: instance,
                 appearance: new Cesium.PerInstanceColorAppearance({
                     flat: true,
-                    renderState: {
-                        lineWidth: Math.min(4.0, viewer.scene.maximumAliasedLineWidth),
-                    },
+                    renderState: { lineWidth: Math.min(4.0, viewer.scene.maximumAliasedLineWidth) },
                 }),
                 asynchronous: false,
             });
@@ -400,7 +379,7 @@ const GlobeViewer = () => {
             viewer.scene.primitives.add(primitive);
             highlightPrimitiveRef.current = primitive;
         }
-    }, [selectedH3Index]);
+    }, [selectedH3Index, resetIdleTimer]);
 
     return (
         <div style={{ position: 'relative', width: '100%', height: '100vh' }}>
@@ -409,39 +388,11 @@ const GlobeViewer = () => {
                 style={{ width: '100%', height: '100%', margin: 0, padding: 0, overflow: 'hidden' }}
             />
 
-            {/* Global Date Filter */}
-            <div style={{
-                position: 'absolute',
-                top: '20px',
-                right: '20px',
-                padding: '15px',
-                background: 'rgba(0, 0, 0, 0.8)',
-                color: 'white',
-                borderRadius: '12px',
-                backdropFilter: 'blur(10px)',
-                border: '1px solid rgba(255, 255, 255, 0.2)',
-                fontFamily: 'Inter, sans-serif',
-                zIndex: 1000,
-                boxShadow: '0 4px 20px rgba(0,0,0,0.3)'
-            }}>
-                <label style={{ display: 'block', marginBottom: '5px', fontSize: '12px', opacity: 0.8 }}>
-                    Filter by Game Time (Hour)
-                </label>
-                <input
-                    type="datetime-local"
-                    value={filterDate}
-                    onChange={(e) => setFilterDate(e.target.value)}
-                    style={{
-                        padding: '8px',
-                        borderRadius: '6px',
-                        border: '1px solid #555',
-                        background: 'rgba(255,255,255,0.1)',
-                        color: 'white',
-                        outline: 'none',
-                        fontFamily: 'inherit'
-                    }}
-                />
-            </div>
+            {/* Date Time Picker at bottom left */}
+            <DateTimePicker
+                value={filterDate}
+                onChange={(newDate) => setFilterDate(newDate)}
+            />
         </div>
     );
 };
